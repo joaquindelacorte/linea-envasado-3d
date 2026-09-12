@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ─────────────────────────────────────────────
 // ESTADO GLOBAL
@@ -35,10 +36,16 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
-renderer.setClearColor(0x1a2744);
+renderer.setClearColor(0xe8edf1);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x1a2744, 0.009);
+scene.fog = new THREE.Fog(0xe8edf1, 48, 100);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const room = new RoomEnvironment();
+const studioEnvironment = pmrem.fromScene(room, 0.04);
+scene.environment = studioEnvironment.texture;
+room.dispose();
+pmrem.dispose();
 
 // ─────────────────────────────────────────────
 // CÁMARA — posición inicial buena para desktop y móvil
@@ -46,7 +53,7 @@ scene.fog = new THREE.FogExp2(0x1a2744, 0.009);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
 
 // Vista isométrica 3/4 — toda la línea visible
-const CAM_DEFAULT = { x: 2, y: 12, z: 22 };
+const CAM_DEFAULT = { x: 17, y: 14, z: 25 };
 camera.position.set(CAM_DEFAULT.x, CAM_DEFAULT.y, CAM_DEFAULT.z);
 camera.lookAt(1, 2, 0);
 
@@ -71,7 +78,8 @@ controls.mouseButtons = {
 
 // Botón reset-cámara (esquina superior izquierda sobre el canvas)
 const camResetBtn = document.createElement('button');
-camResetBtn.textContent = '⌂';
+camResetBtn.textContent = '↺ Vista general';
+camResetBtn.className = 'camera-home';
 camResetBtn.title = 'Resetear cámara';
 Object.assign(camResetBtn.style, {
   position:'fixed', top:'14px', left:'14px', zIndex:'40',
@@ -81,9 +89,7 @@ Object.assign(camResetBtn.style, {
   cursor:'pointer'
 });
 camResetBtn.onclick = () => {
-  camera.position.set(CAM_DEFAULT.x, CAM_DEFAULT.y, CAM_DEFAULT.z);
-  controls.target.set(1, 2, 0);
-  controls.update();
+  frameLine();
 };
 document.body.appendChild(camResetBtn);
 
@@ -119,17 +125,18 @@ function lamp(x, z, col=0xffe8b0, intensity=2.2, dist=12) {
   bulb.position.set(x, 9.1, z);
   scene.add(bulb);
 }
-lamp(-9,0); lamp(-3.5,0); lamp(2,0); lamp(8.5,0,0xff8888,1.6); lamp(11.5,0);
+// Iluminación de estudio: sin luminarias flotantes sobre las máquinas.
 
 // ─────────────────────────────────────────────
 // PISO FÁBRICA
 // ─────────────────────────────────────────────
-const floorMat = new THREE.MeshStandardMaterial({ color:0x2e3c50, roughness:0.85 });
+const floorMat = new THREE.MeshStandardMaterial({ color:0xd6dee3, roughness:0.9 });
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(55,28), floorMat);
 floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
 scene.add(floor);
-const grid = new THREE.GridHelper(55,55,0x3a4f6a,0x2a3a52);
+const grid = new THREE.GridHelper(55,28,0xc0cbd2,0xcbd5db);
 grid.position.y = 0.005;
+grid.material.transparent=true; grid.material.opacity=0.35;
 scene.add(grid);
 function floorLine(x1,z1,x2,z2) {
   const pts=[new THREE.Vector3(x1,0.01,z1),new THREE.Vector3(x2,0.01,z2)];
@@ -143,11 +150,11 @@ floorLine(-13,-3.8,15,-3.8); floorLine(-13,3.8,15,3.8);
 // ─────────────────────────────────────────────
 // MATERIALES
 // ─────────────────────────────────────────────
-const steel     = () => new THREE.MeshStandardMaterial({ color:0x7a8fa6, roughness:0.25, metalness:0.90 });
-const steelDk   = () => new THREE.MeshStandardMaterial({ color:0x4a5a6e, roughness:0.35, metalness:0.85 });
-const steelLt   = () => new THREE.MeshStandardMaterial({ color:0xb0c4d8, roughness:0.20, metalness:0.85 });
+const steel     = () => new THREE.MeshStandardMaterial({ color:0xa8b7c3, roughness:0.34, metalness:0.72 });
+const steelDk   = () => new THREE.MeshStandardMaterial({ color:0x526474, roughness:0.42, metalness:0.6 });
+const steelLt   = () => new THREE.MeshStandardMaterial({ color:0xc4ced4, roughness:0.3, metalness:0.75 });
 const panelWh   = () => new THREE.MeshStandardMaterial({ color:0xdce8f0, roughness:0.55 });
-const panelBl   = () => new THREE.MeshStandardMaterial({ color:0x1e40af, roughness:0.5 });
+const panelBl   = () => new THREE.MeshStandardMaterial({ color:0x157f88, roughness:0.42, metalness:0.15 });
 const orange    = () => new THREE.MeshStandardMaterial({ color:0xf0883e, roughness:0.45, metalness:0.20 });
 const fanucOrg  = () => new THREE.MeshStandardMaterial({ color:0xff6600, roughness:0.30, metalness:0.15 });
 const yellow    = () => new THREE.MeshStandardMaterial({ color:0xf5c518, roughness:0.5 });
@@ -197,10 +204,10 @@ tolvaGroup.add(bx(2.6,0.07,0.07,steel(),0,2.2,-0.9,0,0,-0.55));
 // Cuerpo cónico octagonal — semitransparente para ver el nivel
 const tolvaBodyMat = new THREE.MeshStandardMaterial({
   color:0x7a9ab8, roughness:0.25, metalness:0.6,
-  transparent:true, opacity:0.72, side:THREE.DoubleSide
+  transparent:true, opacity:0.20, depthWrite:false, side:THREE.DoubleSide
 });
-const tolvaCone = new THREE.Mesh(new THREE.CylinderGeometry(2.0,0.45,4.2,8), tolvaBodyMat);
-tolvaCone.position.set(0,6.5,0); tolvaCone.castShadow=true;
+const tolvaCone = new THREE.Mesh(new THREE.CylinderGeometry(2.0,0.45,4.2,48,1,true), tolvaBodyMat);
+tolvaCone.position.set(0,6.5,0); tolvaCone.castShadow=false;
 tolvaGroup.add(tolvaCone);
 
 // ── NIVEL DE POLVO (cilindro interior que sube/baja) ──
@@ -213,17 +220,18 @@ let lastVisualLevel = -1;
 export const tolvaLevelMat = powderMat;
 
 // Flanges superior e inferior
-tolvaGroup.add(cy(2.15,2.15,0.14,16,steelLt(),0,8.65,0));
+const hopperRim = new THREE.Mesh(new THREE.TorusGeometry(2.02,0.09,10,48),steelLt());
+hopperRim.rotation.x=Math.PI/2; hopperRim.position.y=8.65; tolvaGroup.add(hopperRim);
 tolvaGroup.add(cy(0.56,0.56,0.14,12,steelLt(),0,4.45,0));
 
 // Tapa y manijas
-tolvaGroup.add(bx(4.1,0.14,4.1,steelDk(),0,8.73,0));
+// Tapa retirada para visualizar el producto en la tolva.
 tolvaGroup.add(bx(0.55,0.09,0.09,steel(), 0.9,8.88,0));
 tolvaGroup.add(bx(0.55,0.09,0.09,steel(),-0.9,8.88,0));
 
 // Visor lateral (vidrio)
 tolvaGroup.add(bx(0.08,2.8,0.40,glassMat(),1.9,6.5,0));
-tolvaGroup.add(bx(0.12,2.9,0.46,steelDk(), 1.92,6.5,0));
+// Visor sin placa opaca que lo tape.
 
 // Motor vibratorio
 tolvaGroup.add(bx(0.55,0.38,0.55,steelDk(),-1.8,5.3,0));
@@ -283,10 +291,11 @@ function updatePowder(dt) {
   }
   powderParticles.forEach(p => {
     if (!p.userData.active) return;
-    p.userData.vy -= 4 * dt;  // gravedad
-    p.position.y += p.userData.vy * dt;
-    p.userData.t += dt;
-    if (p.position.y < 0.1 || p.userData.t > 1.5) {
+    p.userData.t += dt*plantState.speed;
+    const progress=p.userData.t/1.5;
+    if(progress<0.3) p.position.y=3.38-(progress/0.3)*1.26;
+    else {p.position.y=2.12;p.position.x=-9+(progress-0.3)/0.7*4;}
+    if (progress>=1) {
       p.visible = false;
       p.userData.active = false;
     }
@@ -298,7 +307,7 @@ const pg = new THREE.Group();
 pg.add(cy(0.25,0.25,1.0,10,steelDk(),-9,2.6,0));
 pg.add(cy(0.32,0.32,0.09,10,steelLt(),-9,3.1,0));
 pg.add(cy(0.32,0.32,0.09,10,steelLt(),-9,2.1,0));
-pg.add(cy(0.25,0.25,2.6,10,steelDk(),-7.65,2.12,0,0,0,Math.PI/2));
+pg.add(cy(0.25,0.25,4.0,24,steel(),-7.0,2.12,0,0,0,Math.PI/2));
 pg.add(sp(0.28,steelDk(),-9.0,2.12,0));
 scene.add(pg);
 
@@ -321,16 +330,17 @@ fpGroup.add(bx(0.08,3.2,2.9,steelDk(), 1.58,1.67,0));  // panel der
 fpGroup.add(bx(3.4,0.08,2.9,steelDk(),0,3.24,0));       // techo
 
 // --- BOBINA DE FILM en la parte superior (muy visible) ---
-fpGroup.add(bx(3.4,0.55,2.9,panelBl(),0,3.00,0));       // caja superior azul
-const bobina = cy(0.80,0.80,2.5,24,steelLt(),0,3.05,0,Math.PI/2,0,0);
+fpGroup.add(bx(3.4,0.22,2.9,panelBl(),0,3.12,0));
+[-1.3,1.3].forEach(z=>fpGroup.add(bx(0.14,1.1,0.14,steelDk(),0,3.6,z)));       // caja superior azul
+const bobina = cy(0.80,0.80,2.5,24,steelLt(),0,4.12,0,Math.PI/2,0,0);
 fpGroup.add(bobina);
-fpGroup.add(cy(0.82,0.82,0.12,16,steelDk(), 1.22,3.05,0,Math.PI/2,0,0));
-fpGroup.add(cy(0.82,0.82,0.12,16,steelDk(),-1.22,3.05,0,Math.PI/2,0,0));
+fpGroup.add(cy(0.82,0.82,0.12,16,steelDk(),0,4.12,1.27,Math.PI/2,0,0));
+fpGroup.add(cy(0.82,0.82,0.12,16,steelDk(),0,4.12,-1.27,Math.PI/2,0,0));
 // Eje de bobina
-fpGroup.add(cy(0.08,0.08,2.8,8,steelDk(),0,3.05,0,Math.PI/2,0,0));
+fpGroup.add(cy(0.08,0.08,2.8,8,steelDk(),0,4.12,0,Math.PI/2,0,0));
 // Film enrollado (lámina translúcida)
 const filmRollMat = new THREE.MeshStandardMaterial({color:0xddeeff,roughness:0.1,transparent:true,opacity:0.55});
-fpGroup.add(cy(0.65,0.65,2.45,20,filmRollMat,0,3.05,0,Math.PI/2,0,0));
+fpGroup.add(cy(0.65,0.65,2.45,20,filmRollMat,0,4.12,0,Math.PI/2,0,0));
 
 // --- ZONA DE FORMADO (centro de la máquina) ---
 // Mandril formador triangular (tubo que le da forma a la bolsita)
@@ -599,6 +609,8 @@ boxAreaGroup.add(activeBoxGroup);
 const lidMesh = bx(CAJA_W+0.08,0.07,CAJA_D+0.08,
   new THREE.MeshStandardMaterial({color:0xa0784a,roughness:0.9}),0,1.38,0);
 boxAreaGroup.add(lidMesh);
+lidMesh.rotation.x=-Math.PI/2; lidMesh.position.set(0,2.1,-0.9);
+let boxCloseTime=0;
 
 // ── Bolsitas DENTRO de la caja (se muestran de a una) ──
 const BAGS_IN_BOX = [];
@@ -617,20 +629,19 @@ bagPositions.forEach(([bx2,by,bz]) => {
 });
 
 // Zona de apilado
-const shelfG = new THREE.Group(); shelfG.position.set(-2.8,0,0);
+const shelfG = new THREE.Group(); shelfG.position.set(0,0,-3.8);
 [[-0.88,0.88],[-0.88,-0.88],[0.88,0.88],[0.88,-0.88]].forEach(([sx,sz])=>
   shelfG.add(bx(0.10,4.0,0.10,steelDk(),sx,2.0,sz)));
 [0.20,1.65,3.10].forEach(sy=> shelfG.add(bx(1.85,0.07,1.85,steelDk(),0,sy,0)));
 boxAreaGroup.add(shelfG);
 
 const stackBoxes = [];
-const stackPos = [[0,0.26,0],[0,1.72,0],[0,3.18,0],[0,0.26,0],[0,1.72,0]];
+const stackPos = [[0,0.85,0],[0,2.30,0],[0,3.75,0]];
 stackPos.forEach(([sx,sy,sz],i)=>{
   const sg = new THREE.Group();
-  sg.position.set(-2.8+sx,sy,sz);
+  sg.position.set(sx,sy,-3.8+sz);
   sg.add(bx(1.65,1.22,1.65,cardboard()));
-  [[CAJA_W/2,CAJA_H/2,0],[- CAJA_W/2,CAJA_H/2,0]].forEach(([px,py,pz])=>
-    sg.add(bx(0.05,CAJA_H,CAJA_D,new THREE.MeshStandardMaterial({color:0x8b5e30,roughness:0.95}),px,py,pz)));
+  sg.add(bx(0.16,0.02,1.67,new THREE.MeshStandardMaterial({color:0xe3c68b,roughness:0.8}),0,0.62,0));
   sg.visible=false;
   boxAreaGroup.add(sg);
   stackBoxes.push(sg);
@@ -643,27 +654,27 @@ scene.add(boxAreaGroup);
 function makeLabel(text,x,y,z,color='#f0883e',sub='') {
   const c=document.createElement('canvas'); c.width=340; c.height=sub?88:72;
   const ctx=c.getContext('2d');
-  ctx.fillStyle='rgba(18,28,54,0.90)';
+  ctx.fillStyle='rgba(255,255,255,0.95)';
   if(ctx.roundRect) ctx.roundRect(3,3,334,c.height-6,10); else ctx.rect(3,3,334,c.height-6);
   ctx.fill();
   ctx.strokeStyle=color; ctx.lineWidth=2;
   if(ctx.roundRect) ctx.roundRect(3,3,334,c.height-6,10); else ctx.rect(3,3,334,c.height-6);
   ctx.stroke();
-  ctx.fillStyle=color; ctx.font='bold 26px "Courier New"';
+  ctx.fillStyle='#193c4d'; ctx.font='bold 29px Arial';
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(text,170, sub?32:c.height/2);
   if(sub){
-    ctx.fillStyle='rgba(200,220,255,0.7)'; ctx.font='15px "Courier New"';
+    ctx.fillStyle='#4f6877'; ctx.font='18px Arial';
     ctx.fillText(sub,170,62);
   }
   const sp2=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
-  sp2.scale.set(2.5,sub?0.65:0.54,1); sp2.position.set(x,y,z);
+  sp2.scale.set(3.1,sub?0.80:0.66,1); sp2.position.set(x,y,z);
   scene.add(sp2);
 }
 makeLabel('TOLVA',    -9.0,10.4,0,'#60a5fa','Alimentación de polvo');
-makeLabel('FLOWPACK', -3.5, 4.5,0,'#f0883e','Envasadora continua');
+makeLabel('FLOWPACK', -3.5, 5.6,0,'#f0883e','Envasadora continua');
 makeLabel('CINTA',     2.0, 2.7,0,'#34d399','Transporte');
-makeLabel('ROBOT',     8.5, 6.2,0,'#ff6600','FANUC M-10iA');
+makeLabel('ROBOT',     8.5, 5.7,0,'#ff6600','FANUC M-10iA');
 makeLabel('CAJAS',    11.5, 2.8,0,'#f5c518','Paletizado');
 
 // ══════════════════════════════════════════════════════
@@ -899,6 +910,12 @@ function animate(ts){
     animateRobot(dt);
 
     updateMachineVisuals(dt * s.speed);
+    if(boxCloseTime>0){
+      boxCloseTime=Math.max(0,boxCloseTime-dt*s.speed);
+      const openness=boxCloseTime>0.6?1-(1.2-boxCloseTime)/0.6:1-boxCloseTime/0.6;
+      lidMesh.rotation.x=-Math.PI/2*openness;
+      lidMesh.position.set(0,1.56+0.54*openness,-0.9*openness);
+    }
 
     // Compuerta
     const tRot=s.running?0.75:0;
@@ -963,40 +980,57 @@ function moveBags(dt){
 }
 
 // ── Robot ──
+const robotTool = new THREE.Vector3(6, 2.7, 0);
+const robotFrom = robotTool.clone();
+const robotTarget = robotTool.clone();
+function poseRobot(tool) {
+  const dx=tool.x-robotGroup.position.x, dz=tool.z-robotGroup.position.z;
+  const radial=Math.hypot(dx,dz), vertical=tool.y+0.67-1.78;
+  const l1=2.12,l2=1.68;
+  const cosine=THREE.MathUtils.clamp((radial*radial+vertical*vertical-l1*l1-l2*l2)/(2*l1*l2),-1,1);
+  const elbow=Math.acos(cosine);
+  const shoulder=Math.atan2(radial,vertical)-Math.atan2(l2*Math.sin(elbow),l1+l2*Math.cos(elbow));
+  // Rotate only the joint assembly: the robot pedestal stays fixed.
+  shoulderPivot.rotation.set(shoulder,Math.atan2(dx,dz),0,'YXZ');
+  elbowPivot.rotation.x=elbow;
+  wristPivot.rotation.x=-shoulder-elbow;
+  robotGroup.updateMatrixWorld(true);
+}
+poseRobot(robotTool);
 function animateRobot(dt){
   const ra=robotAnim;
   if(ra.phase===0) return;
-  ra.t+=dt*plantState.speed;
-  const pd=ra.duration[ra.phase];
-  const pt=Math.min(ra.t/pd,1.0);
-  const ease=t=>t<0.5?2*t*t:-1+(4-2*t)*t;
-  shoulderPivot.rotation.x=lerp(ra.shoulderTargets[ra.phase-1]??0,ra.shoulderTargets[ra.phase],ease(pt));
-  elbowPivot.rotation.x=lerp(ra.elbowTargets[ra.phase-1]??0.2,ra.elbowTargets[ra.phase],ease(pt));
-  if(ra.phase===4) robotGroup.rotation.y=lerp(0,-Math.PI*0.6,ease(pt));
-  if(ra.phase===7) robotGroup.rotation.y=lerp(-Math.PI*0.6,0,ease(pt));
-  if(ra.hasBag && ra.carriedBag){
-    const wp=new THREE.Vector3();
-    wristPivot.localToWorld(wp.set(0,-0.67,0));
-    ra.carriedBag.position.copy(wp);
+  if(ra.t===0){
+    robotFrom.copy(robotTool);
+    const slot=bagPositions[plantState._bolsitasEnCaja];
+    const destination=new THREE.Vector3(11.5+slot[0],0.2+slot[1],slot[2]);
+    const pick=ra.carriedBag?.position;
+    if(ra.phase<=2) robotTarget.set(pick?.x??BELT_END_X,BELT_Y,0);
+    if(ra.phase===3) robotTarget.set(BELT_END_X,2.7,0);
+    if(ra.phase===4) robotTarget.set(destination.x,2.7,destination.z);
+    if(ra.phase===5 || ra.phase===6) robotTarget.copy(destination);
+    if(ra.phase===7) robotTarget.set(BELT_END_X,2.7,0);
   }
-  if(ra.t>=pd){
+  ra.t+=dt*plantState.speed;
+  const pt=Math.min(ra.t/ra.duration[ra.phase],1);
+  const eased=pt*pt*(3-2*pt);
+  robotTool.lerpVectors(robotFrom,robotTarget,eased);
+  poseRobot(robotTool);
+  const grip=ra.phase===2?lerp(0.27,0.21,eased):ra.phase===6?lerp(0.21,0.27,eased):ra.hasBag?0.21:0.27;
+  garraL.position.x=-grip; garraR.position.x=grip;
+  if(ra.hasBag && ra.carriedBag){
+    ra.carriedBag.position.copy(robotTool);
+  }
+  if(pt>=1){
     ra.t=0;
     if(ra.phase===2){
       ra.hasBag=true;
-      garraL.position.x=-0.09; garraR.position.x=0.09;
       if(ra.carriedBag) ra.carriedBag.userData.active=false;
     }
     if(ra.phase===6){
       ra.hasBag=false;
-      garraL.position.x=-0.16; garraR.position.x=0.16;
-      if(ra.carriedBag){
-        ra.carriedBag.visible=false;
-        ra.carriedBag.userData.readyForPick=false;
-        ra.carriedBag=null;
-      }
-      // Mostrar bolsita dentro de la caja
-      const idx=plantState._bolsitasEnCaja;
-      if(idx<BAGS_IN_BOX.length) BAGS_IN_BOX[idx].visible=true;
+      if(ra.carriedBag){ra.carriedBag.visible=false;ra.carriedBag.userData.readyForPick=false;ra.carriedBag=null;}
+      BAGS_IN_BOX[plantState._bolsitasEnCaja].visible=true;
       plantState._bolsitasEnCaja++;
       if(plantState._bolsitasEnCaja>=BOLSITAS_POR_CAJA) completarCaja();
     }
@@ -1014,7 +1048,7 @@ function completarCaja(){
   playBeep(800,0.15); playBeep(1000,0.1);
   logEvent(`📦 Caja #${plantState.cajas} completada (${BOLSITAS_POR_CAJA} bolsitas)`,'ok');
   // Tapa baja
-  lidMesh.position.y=1.36;
+  boxCloseTime=1.2;
   const idx=Math.min(plantState.cajas-1,stackBoxes.length-1);
   if(idx>=0) stackBoxes[idx].visible=true;
   if(plantState.mode==='auto' && plantState.nivel<0.3){
@@ -1027,10 +1061,19 @@ function completarCaja(){
 }
 
 // ── Resize ──
+function frameLine(){
+  const direction=new THREE.Vector3(0.35,0.37,1).normalize();
+  const distance=Math.max(23,20/Math.max(camera.aspect,0.45));
+  controls.target.set(1,3.7,0);
+  camera.position.copy(controls.target).addScaledVector(direction,distance);
+  controls.update();
+}
+let firstLayout=true;
 function onResize(){
-  const w=canvas.clientWidth, h=canvas.clientHeight;
+  const w=Math.max(1,canvas.clientWidth), h=Math.max(1,canvas.clientHeight);
   renderer.setSize(w,h,false);
   camera.aspect=w/h; camera.updateProjectionMatrix();
+  if(firstLayout){frameLine();firstLayout=false;}
 }
 window.addEventListener('resize',onResize);
 onResize();
