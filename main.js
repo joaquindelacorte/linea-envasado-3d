@@ -1,5 +1,5 @@
 /**
- * main.js — Línea de Envasado 3D  (v3)
+ * main.js — Línea de Envasado 3D  (v4)
  * Cambios: cámara mobile, polvo visible en tolva, robot FANUC, flowpack + cajas mejoradas
  */
 
@@ -34,7 +34,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.4;
+renderer.toneMappingExposure = 1.15;
 renderer.setClearColor(0x1a2744);
 
 const scene = new THREE.Scene();
@@ -97,7 +97,10 @@ sun.position.set(-10, 18, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { near:0.5, far:60, left:-28, right:28, top:25, bottom:-25 });
+sun.shadow.normalBias = 0.035;
+sun.shadow.bias = -0.0001;
 scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcce8ff, 0x403226, 1.0));
 
 const fill = new THREE.DirectionalLight(0xaac8ff, 0.5);
 fill.position.set(14, 8, -8);
@@ -201,10 +204,12 @@ tolvaCone.position.set(0,6.5,0); tolvaCone.castShadow=true;
 tolvaGroup.add(tolvaCone);
 
 // ── NIVEL DE POLVO (cilindro interior que sube/baja) ──
-const nivelGeo = new THREE.CylinderGeometry(1.0, 0.44, 1.0, 8);  // alto dinámico
+const nivelGeo = new THREE.CylinderGeometry(1, 1, 1, 32);  // alto dinámico
 const nivelMesh = new THREE.Mesh(nivelGeo, powderMat);
 nivelMesh.position.set(0, 4.6, 0);   // posición Y se actualiza en animate
 tolvaGroup.add(nivelMesh);
+const nivelTemplate = nivelGeo.attributes.position.array.slice();
+let lastVisualLevel = -1;
 export const tolvaLevelMat = powderMat;
 
 // Flanges superior e inferior
@@ -335,9 +340,11 @@ fpGroup.add(cy(0.32,0.32,0.08,12,steelLt(),0,2.9,0)); // flange superior mandril
 // Panel de vidrio frontal (se puede "ver" la formación)
 fpGroup.add(bx(2.9,1.9,0.06,glassMat(),0,2.0,1.46));
 
+const filmRollers = [bobina];
 // Guías de film (rodillos)
 [[-1.0,2.65],[0.0,2.65],[1.0,2.65],[0.0,1.8]].forEach(([rx,ry])=>{
-  fpGroup.add(cy(0.09,0.09,2.5,10,steelLt(),rx,ry,0,Math.PI/2,0,0));
+  const roller = cy(0.09,0.09,2.5,24,steelLt(),rx,ry,0,Math.PI/2,0,0);
+  fpGroup.add(roller); filmRollers.push(roller);
 });
 
 // --- MORDAZAS DE SELLADO (horizontal + vertical) ---
@@ -345,8 +352,7 @@ fpGroup.add(bx(2.9,1.9,0.06,glassMat(),0,2.0,1.46));
 const mHz = bx(0.55,0.12,2.4,steelDk(),-0.28,1.08,0);
 const mHzB= bx(0.55,0.12,2.4,steelDk(), 0.28,1.08,0);
 fpGroup.add(mHz, mHzB);
-fpGroup.add(bx(0.07,0.06,2.2,orange(),-0.28,1.06,0));  // resistencia sellado
-fpGroup.add(bx(0.07,0.06,2.2,orange(), 0.28,1.06,0));
+// Resistencias montadas en las mordazas móviles (ver visuales de proceso).
 
 // --- FLECHA ANIMADA de dirección del film (sprite) ---
 function makeArrow(x,y,z,color='#f0883e') {
@@ -674,7 +680,7 @@ const robotAnim = {
 // Posiciones cinta
 const BELT_START_X = -1.5;
 const BELT_END_X   =  6.0;
-const BELT_Y       =  0.85;
+const BELT_Y       =  1.05;
 
 // ══════════════════════════════════════════════════════
 //  UI
@@ -735,10 +741,10 @@ window.toggleLine=function(){
   plantState.running=!plantState.running;
   const btn=document.getElementById('btn-start');
   if(plantState.running){
-    btn.textContent='⏸ DETENER LÍNEA'; btn.classList.add('running');
+    if(btn){ btn.textContent='⏸ DETENER LÍNEA'; btn.classList.add('running'); }
     logEvent('Línea iniciada','ok');
   } else {
-    btn.textContent='▶ INICIAR LÍNEA'; btn.classList.remove('running');
+    if(btn){ btn.textContent='▶ INICIAR LÍNEA'; btn.classList.remove('running'); }
     logEvent('Línea detenida','info');
   }
   updatePanel();
@@ -751,8 +757,8 @@ window.setMode=function(mode){
 };
 window.triggerEmergency=function(){
   plantState.running=false; plantState.emergency=true; plantState.alarm=true;
-  document.getElementById('btn-start').textContent='▶ INICIAR LÍNEA';
-  document.getElementById('btn-start').classList.remove('running');
+  if(document.getElementById('btn-start')) document.getElementById('btn-start').textContent='▶ INICIAR LÍNEA';
+  document.getElementById('btn-start')?.classList.remove('running');
   logEvent('⚠ PARADA DE EMERGENCIA','alarm');
   playAlarm(); updatePanel();
 };
@@ -788,6 +794,83 @@ function playBeep(freq=1200,dur=0.05){
   osc.start(ctx.currentTime); osc.stop(ctx.currentTime+dur);
 }
 
+// Visuales de proceso: todas las fases usan tiempo de simulación y se congelan al detener.
+function processTexture(draw, width=256, height=128) {
+  const c = document.createElement('canvas'); c.width=width; c.height=height;
+  draw(c.getContext('2d'), width, height);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  return texture;
+}
+const beltTexture = processTexture((ctx,w,h) => {
+  ctx.fillStyle='#263442'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='#506171'; ctx.fillRect(0,0,6,h);
+  ctx.fillStyle='#344451';
+  for(let y=0;y<h;y+=8) ctx.fillRect(8,y,w-8,1);
+});
+beltTexture.repeat.set(16,1);
+const beltSurface = bx(9,0.02,1.75,new THREE.MeshStandardMaterial({map:beltTexture,roughness:0.86}),0,0.915,0);
+cintaGroup.add(beltSurface);
+const filmTexture = processTexture((ctx,w,h) => {
+  ctx.fillStyle='#e9e3ce'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='#2459a0'; ctx.fillRect(0,42,w,44);
+  ctx.fillStyle='#ffffff'; ctx.font='bold 20px Arial'; ctx.textAlign='center';
+  ctx.fillText('UNaP · POLVOS',w/2,70);
+  ctx.fillStyle='#b9b29e'; ctx.fillRect(0,0,w,4);
+});
+const webFilm = bx(0.62,1.4,0.012,new THREE.MeshStandardMaterial({
+  map:filmTexture,roughness:0.32,metalness:0.15,side:THREE.DoubleSide
+}),0,2.0,0.38);
+fpGroup.add(webFilm);
+// Mark the reel end so its rotation can be read, even with uniform metal.
+bobina.add(bx(1.4,0.02,0.035,orange(),0,1.26,0));
+const sealStrips = [bx(0.055,0.08,2.2,orange()), bx(0.055,0.08,2.2,orange())];
+mHz.add(sealStrips[0]); mHzB.add(sealStrips[1]);
+sealStrips[0].position.x=0.25; sealStrips[1].position.x=-0.25;
+// Shared rounded packet shell and end crimps.
+const packetGeo = new THREE.SphereGeometry(1,20,12);
+const packetMat = new THREE.MeshStandardMaterial({color:0xf0e4c9,roughness:0.4,metalness:0.08});
+[...bagsOnBelt,...BAGS_IN_BOX].forEach(bag => {
+  bag.children[0].visible=false;
+  const shell = new THREE.Mesh(packetGeo,packetMat);
+  shell.scale.set(0.29,0.12,0.22); shell.castShadow=true; shell.receiveShadow=true;
+  bag.add(shell);
+  [-1,1].forEach(side => {
+    bag.add(bx(0.055,0.025,0.40,steelLt(),side*0.285,0,0));
+    for(let z=-0.18;z<=0.18;z+=0.045)
+      bag.add(bx(0.055,0.006,0.012,steelDk(),side*0.285,0.016,z));
+  });
+});
+// Panel hardware: feet, fasteners and door handles.
+[-1.48,1.48].forEach(x => {
+  [1.2,2.8].forEach(y => fpGroup.add(cy(0.035,0.035,0.025,6,steelLt(),x,y,1.51,Math.PI/2)));
+  fpGroup.add(bx(0.045,0.32,0.07,steelLt(),x,2,1.56));
+});
+const signalLamps=[];
+[tolvaGroup,fpGroup,robotGroup].forEach(group => group.traverse(obj => {
+  if(obj.isMesh && [0x22c55e,0xef4444,0xfbbf24].includes(obj.material?.emissive?.getHex()))
+    signalLamps.push(obj);
+}));
+function updateSignals() {
+  const s=plantState;
+  const color=(s.emergency || s.alarm)?0xef4444:s.running?0x22c55e:0xfbbf24;
+  signalLamps.forEach(mesh => {
+    mesh.material.emissiveIntensity=mesh.material.emissive.getHex()===color?1.5:0;
+    mesh.material.color.copy(mesh.material.emissive).multiplyScalar(mesh.material.emissive.getHex()===color?1:0.18);
+  });
+}
+function updateMachineVisuals(dt) {
+  const phase=plantState._flowpackTimer/CYCLE_FLOWPACK;
+  beltTexture.offset.x=(beltTexture.offset.x-dt*0.6)%1;
+  filmTexture.offset.y=(filmTexture.offset.y+dt*0.34)%1;
+  filmRollers.forEach(roller => roller.rotateY(dt*1.6));
+  const seal=Math.max(0,1-Math.abs(phase-0.82)/0.14);
+  mHz.position.x=-0.28-(1-seal)*0.20;
+  mHzB.position.x=0.28+(1-seal)*0.20;
+}
+
 // ══════════════════════════════════════════════════════
 //  GAME LOOP
 // ══════════════════════════════════════════════════════
@@ -815,10 +898,7 @@ function animate(ts){
     updatePowder(dt);
     animateRobot(dt);
 
-    // Rodillos flowpack
-    fpGroup.children.forEach(c=>{
-      if(c.geometry?.type==='CylinderGeometry') c.rotation.y+=dt*1.6*s.speed;
-    });
+    updateMachineVisuals(dt * s.speed);
 
     // Compuerta
     const tRot=s.running?0.75:0;
@@ -827,18 +907,26 @@ function animate(ts){
 
   // ── Actualizar nivel de polvo visual ──
   {
-    const maxH=4.0; // altura máxima del cono
-    const h=Math.max(0.1, s.nivel * maxH);
-    nivelMesh.scale.y = h;
-    // El cilindro de nivel: su top debe llegar hasta la base inferior del cono
-    // Cono: de y=4.5 (base) a y=8.5 (tapa). Polvo empieza desde y≈4.5
-    nivelMesh.position.y = 4.5 + h/2;
-    // Radio proporcional al nivel (el cono se estrecha hacia abajo)
-    const rTop = 0.44 + s.nivel * (1.9-0.44);
-    nivelMesh.geometry.dispose();
-    nivelMesh.geometry = new THREE.CylinderGeometry(rTop*0.9, 0.44, h, 8);
+    const level = THREE.MathUtils.clamp(s.nivel, 0, 1);
+    if (level !== lastVisualLevel) {
+      const h = level * 4;
+      const positions = nivelGeo.attributes.position;
+      for (let i = 0; i < positions.count; i++) {
+        const height = (nivelTemplate[i * 3 + 1] + 0.5) * h;
+        const radius = 0.42 + height * (1.88 - 0.42) / 4;
+        positions.setXYZ(i, nivelTemplate[i * 3] * radius,
+          height, nivelTemplate[i * 3 + 2] * radius);
+      }
+      positions.needsUpdate = true;
+      nivelGeo.computeVertexNormals();
+      nivelGeo.computeBoundingSphere();
+      nivelMesh.position.y = 4.5;
+      nivelMesh.visible = level > 0;
+      lastVisualLevel = level;
+    }
   }
 
+  updateSignals();
   controls.update();
   updatePanel();
   renderer.render(scene,camera);
@@ -846,8 +934,8 @@ function animate(ts){
 
 // ── Bolsitas ──
 function spawnBag(){
-  const bag=bagsOnBelt.find(b=>!b.userData.active);
-  if(!bag) return;
+  const bag=bagsOnBelt.find(b=>!b.userData.active && b !== robotAnim.carriedBag);
+  if(!bag || bagsOnBelt.some(b => b.userData.active && b.userData.progress < 0.12)) return;
   bag.userData.active=true; bag.userData.progress=0; bag.userData.readyForPick=false;
   bag.visible=true;
   bag.position.set(BELT_START_X,BELT_Y,0);
@@ -856,9 +944,12 @@ function spawnBag(){
   logEvent(`Bolsita #${plantState.bolsitas} producida`,'ok');
 }
 function moveBags(dt){
-  bagsOnBelt.forEach(bag=>{
-    if(!bag.userData.active) return;
-    bag.userData.progress+=dt*plantState.speed/CYCLE_CINTA;
+  let limit = 1;
+  const queued = bagsOnBelt.filter(b => b.userData.active)
+    .sort((a,b) => b.userData.progress - a.userData.progress);
+  queued.forEach(bag=>{
+    bag.userData.progress = Math.min(limit, bag.userData.progress + dt*plantState.speed/CYCLE_CINTA);
+    limit = Math.max(0, bag.userData.progress - 0.85/(BELT_END_X-BELT_START_X));
     const p=bag.userData.progress;
     bag.position.set(BELT_START_X+p*(BELT_END_X-BELT_START_X),BELT_Y,0);
     if(p>=1.0){
@@ -885,7 +976,7 @@ function animateRobot(dt){
   if(ra.phase===7) robotGroup.rotation.y=lerp(-Math.PI*0.6,0,ease(pt));
   if(ra.hasBag && ra.carriedBag){
     const wp=new THREE.Vector3();
-    wristPivot.getWorldPosition(wp);
+    wristPivot.localToWorld(wp.set(0,-0.67,0));
     ra.carriedBag.position.copy(wp);
   }
   if(ra.t>=pd){
@@ -930,8 +1021,8 @@ function completarCaja(){
     plantState.nivel=1.0; plantState.alarm=false;
     logEvent('Tolva recargada (modo auto)','ok');
     plantState.running=true;
-    document.getElementById('btn-start').textContent='⏸ DETENER LÍNEA';
-    document.getElementById('btn-start').classList.add('running');
+    if(document.getElementById('btn-start')) document.getElementById('btn-start').textContent='⏸ DETENER LÍNEA';
+    document.getElementById('btn-start')?.classList.add('running');
   }
 }
 
@@ -947,3 +1038,4 @@ onResize();
 logEvent('Sistema iniciado. Esperando comando.','info');
 updatePanel(); drawSparkline();
 requestAnimationFrame(animate);
+
