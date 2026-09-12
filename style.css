@@ -15,6 +15,11 @@
   --text-muted: #8b949e;
   --font-mono:  'Courier New', Courier, monospace;
   --panel-w:    280px;
+
+  /* Botonera */
+  --botonera-bg:     #1a2235;
+  --botonera-border: #2a3a55;
+  --botonera-metal:  #232f42;
 }
 
 body {
@@ -25,6 +30,312 @@ body {
   height: 100vh;
   display: flex;
 }
+
+/* ══════════════════════════════════════════
+   BOTONERA VIRTUAL
+══════════════════════════════════════════ */
+#botonera {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(calc(-50% - 140px)); /* desplazada a la izq del panel */
+  z-index: 50;
+
+  background: var(--botonera-bg);
+  border: 2px solid var(--botonera-border);
+  border-radius: 12px;
+  padding: 14px 18px 12px;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 420px;
+
+  /* Textura metálica sutil */
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 3px,
+    rgba(255,255,255,0.012) 3px,
+    rgba(255,255,255,0.012) 4px
+  );
+}
+
+/* ── Placa de identificación ── */
+.botonera-nameplate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 1px solid var(--botonera-border);
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+}
+.nameplate-title {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--orange);
+  text-transform: uppercase;
+}
+.nameplate-sub {
+  font-size: 0.52rem;
+  letter-spacing: 0.10em;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* ── Filas de botones ── */
+.botonera-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  justify-content: center;
+}
+.botonera-row--bottom {
+  align-items: center;
+}
+.botonera-divider {
+  height: 1px;
+  background: var(--botonera-border);
+  margin: 0 4px;
+}
+
+/* ── Celda de botón ── */
+.btn-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.btn-cell--wide { min-width: 68px; }
+
+.btn-label {
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* ── Botón físico (círculo con bisel) ── */
+.phys-btn-wrap {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Anillo exterior iluminado */
+.phys-btn-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.phys-btn-ring--green  { box-shadow: 0 0 14px 4px rgba(63,185,80,0.55);  }
+.phys-btn-ring--red    { box-shadow: 0 0 14px 4px rgba(248,81,73,0.6);   }
+.phys-btn-ring--yellow { box-shadow: 0 0 14px 4px rgba(210,153,34,0.6);  }
+
+.phys-btn-wrap:hover .phys-btn-ring { opacity: 1; }
+
+.phys-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.08s, filter 0.08s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 4px 0 rgba(0,0,0,0.5),
+    inset 0 2px 4px rgba(255,255,255,0.18),
+    inset 0 -2px 4px rgba(0,0,0,0.3);
+}
+.phys-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 rgba(0,0,0,0.5),
+    inset 0 2px 4px rgba(255,255,255,0.10),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+}
+.phys-btn-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Colores */
+.phys-btn--green  { background: radial-gradient(circle at 35% 35%, #52c46a, #27a245); color: #fff; }
+.phys-btn--red    { background: radial-gradient(circle at 35% 35%, #ff6b6b, #c0392b); color: #fff; }
+.phys-btn--yellow { background: radial-gradient(circle at 35% 35%, #f7ca4e, #c49a0a); color: #333; }
+
+/* Running: botón start parpadea levemente amarillo */
+.phys-btn--running {
+  background: radial-gradient(circle at 35% 35%, #ffe066, #c49a0a) !important;
+  color: #333 !important;
+  animation: btn-pulse 1.4s ease-in-out infinite;
+}
+@keyframes btn-pulse {
+  0%,100% { filter: brightness(1); }
+  50%      { filter: brightness(1.25); }
+}
+
+/* Botón emergencia más grande y hexagonal */
+.phys-btn--emerg {
+  width: 62px;
+  height: 62px;
+  clip-path: polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);
+  border-radius: 0;
+  font-size: 1.5rem;
+}
+.phys-btn-wrap:has(.phys-btn--emerg) {
+  width: 62px;
+  height: 62px;
+}
+
+/* ── Toggle switch (modo Manual/Auto) ── */
+.switch-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.switch-label-top,
+.switch-label-bot {
+  font-size: 0.52rem;
+  letter-spacing: 0.10em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.toggle-switch {
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-track {
+  width: 24px;
+  height: 50px;
+  background: var(--botonera-metal);
+  border: 1px solid var(--botonera-border);
+  border-radius: 12px;
+  padding: 3px;
+  position: relative;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+}
+.toggle-thumb {
+  width: 18px;
+  height: 22px;
+  background: radial-gradient(circle at 40% 35%, #8ac8ff, #2563eb);
+  border-radius: 9px;
+  transition: transform 0.3s cubic-bezier(.4,1.5,.6,1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  transform: translateY(100%);
+}
+
+/* ── Potenciómetro virtual ── */
+.knob-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.knob-wrap {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.knob-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--botonera-border);
+  background: conic-gradient(
+    var(--orange) 0%,
+    var(--orange) 0%,
+    var(--botonera-metal) 0%
+  );
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+}
+.knob {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 35%, #4a5e7a, #1a2540);
+  border: 2px solid #3a4f6a;
+  cursor: ns-resize;
+  position: relative;
+  box-shadow:
+    0 3px 6px rgba(0,0,0,0.6),
+    inset 0 1px 2px rgba(255,255,255,0.12);
+  user-select: none;
+}
+.knob-marker {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 3px;
+  height: 10px;
+  background: var(--orange);
+  border-radius: 2px;
+  margin-left: -1.5px;
+  transform-origin: center 16px;
+}
+.knob-ticks {
+  position: absolute;
+  bottom: -14px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+.tick { font-size: 0.45rem; color: var(--text-muted); letter-spacing: 0.06em; }
+.knob-pct {
+  font-size: 0.62rem;
+  color: var(--orange);
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+}
+
+/* ── Semáforo ── */
+.semaforo-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.semaforo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--botonera-metal);
+  border: 1px solid var(--botonera-border);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+.sema-led {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1a2030;
+  border: 1px solid #2a3040;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.sema-on-red    { background: var(--red);    box-shadow: 0 0 8px var(--red);    }
+.sema-on-yellow { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+.sema-on-green  { background: var(--green);  box-shadow: 0 0 8px var(--green);  }
 
 /* ── Canvas 3D ── */
 #canvas3d {
@@ -223,35 +534,8 @@ body {
 .event-log .log-ok    { color: var(--green); }
 .event-log .log-info  { color: var(--text-muted); }
 
-/* ── Controles ── */
-.controls-section {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding-top: 10px;
-  padding-bottom: 14px;
-}
-
-.ctrl-btn {
-  width: 100%;
-  padding: 10px;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.1s;
-}
-
-.ctrl-btn:active { transform: scale(0.97); }
-
-.btn-start     { background: var(--green); color: #000; }
-.btn-emergency { background: var(--red);   color: #fff; }
-.btn-reset     { background: var(--bg-section); color: var(--text-muted); border: 1px solid var(--border); }
-
-.btn-start.running { background: var(--yellow); color: #000; }
+/* ── Controles (ocultos — reemplazados por botonera virtual) ── */
+.controls-section { display: none; }
 
 /* ── Alarma banner ── */
 .alarm-banner {

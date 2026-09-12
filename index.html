@@ -19,7 +19,113 @@
   <!-- ── 3D Canvas ── -->
   <canvas id="canvas3d"></canvas>
 
-  <!-- ── Panel lateral ── -->
+  <!-- ══════════════════════════════════════════
+       BOTONERA VIRTUAL (overlay sobre el canvas)
+  ══════════════════════════════════════════ -->
+  <div id="botonera">
+
+    <!-- Placa de identificación -->
+    <div class="botonera-nameplate">
+      <span class="nameplate-title">PANEL DE CONTROL</span>
+      <span class="nameplate-sub">LÍNEA Nº 01 — POLVOS FLOWPACK</span>
+    </div>
+
+    <!-- Fila 1: START / STOP + EMERGENCIA -->
+    <div class="botonera-row">
+
+      <!-- Botón START / STOP (grande, verde/amarillo) -->
+      <div class="btn-cell btn-cell--wide">
+        <div class="phys-btn-wrap">
+          <button id="vbtn-start"
+                  class="phys-btn phys-btn--green"
+                  onclick="toggleLine()"
+                  title="Iniciar / Detener la línea">
+            <span class="phys-btn-icon">▶</span>
+          </button>
+          <div class="phys-btn-ring phys-btn-ring--green"></div>
+        </div>
+        <span class="btn-label" id="vbtn-start-label">INICIAR</span>
+      </div>
+
+      <!-- Botón EMERGENCIA (rojo grande, hexagonal) -->
+      <div class="btn-cell btn-cell--wide">
+        <div class="phys-btn-wrap">
+          <button id="vbtn-emerg"
+                  class="phys-btn phys-btn--red phys-btn--emerg"
+                  onclick="triggerEmergency()"
+                  title="Parada de emergencia">
+            <span class="phys-btn-icon">✋</span>
+          </button>
+          <div class="phys-btn-ring phys-btn-ring--red"></div>
+        </div>
+        <span class="btn-label">EMERGENCIA</span>
+      </div>
+
+      <!-- Botón RESET (amarillo) -->
+      <div class="btn-cell">
+        <div class="phys-btn-wrap">
+          <button id="vbtn-reset"
+                  class="phys-btn phys-btn--yellow"
+                  onclick="resetAlarm()"
+                  title="Resetear alarma">
+            <span class="phys-btn-icon">↺</span>
+          </button>
+          <div class="phys-btn-ring phys-btn-ring--yellow"></div>
+        </div>
+        <span class="btn-label">RESET</span>
+      </div>
+
+    </div>
+
+    <!-- Separador -->
+    <div class="botonera-divider"></div>
+
+    <!-- Fila 2: MODO + VELOCIDAD -->
+    <div class="botonera-row botonera-row--bottom">
+
+      <!-- Switch MANUAL / AUTO -->
+      <div class="switch-cell">
+        <span class="switch-label-top">AUTO</span>
+        <div class="toggle-switch" id="mode-switch" onclick="toggleMode()" title="Cambiar modo Manual / Auto">
+          <div class="toggle-track">
+            <div class="toggle-thumb" id="toggle-thumb"></div>
+          </div>
+        </div>
+        <span class="switch-label-bot">MANUAL</span>
+      </div>
+
+      <!-- Potenciómetro virtual de velocidad -->
+      <div class="knob-cell">
+        <div class="knob-wrap">
+          <div class="knob-ring"></div>
+          <div class="knob" id="knob" title="Velocidad de ciclo">
+            <div class="knob-marker" id="knob-marker"></div>
+          </div>
+          <div class="knob-ticks">
+            <span class="tick tick-min">MIN</span>
+            <span class="tick tick-max">MAX</span>
+          </div>
+        </div>
+        <span class="btn-label">VELOCIDAD</span>
+        <span class="knob-pct" id="knob-pct">50%</span>
+      </div>
+
+      <!-- Semáforo de estado (3 LEDs) -->
+      <div class="semaforo-cell">
+        <div class="semaforo">
+          <div class="sema-led" id="sema-r" title="Alarma / Emergencia"></div>
+          <div class="sema-led" id="sema-y" title="En espera"></div>
+          <div class="sema-led" id="sema-g" title="Producción OK"></div>
+        </div>
+        <span class="btn-label">ESTADO</span>
+      </div>
+
+    </div>
+
+  </div>
+  <!-- fin botonera -->
+
+  <!-- ── Panel lateral SCADA ── -->
   <aside id="panel">
 
     <header class="panel-header">
@@ -85,7 +191,6 @@
           <div class="counter-lbl">bolsitas/min</div>
         </div>
       </div>
-      <!-- Mini sparkline -->
       <canvas id="sparkline" width="260" height="48"></canvas>
     </section>
 
@@ -106,13 +211,6 @@
       <div id="event-log" class="event-log"></div>
     </section>
 
-    <!-- Controles -->
-    <section class="panel-section controls-section">
-      <button id="btn-start" class="ctrl-btn btn-start" onclick="toggleLine()">▶ INICIAR LÍNEA</button>
-      <button class="ctrl-btn btn-emergency" onclick="triggerEmergency()">🛑 PARADA DE EMERGENCIA</button>
-      <button class="ctrl-btn btn-reset" onclick="resetAlarm()">↺ RESET ALARMA</button>
-    </section>
-
   </aside>
 
   <!-- Alarma banner -->
@@ -122,5 +220,94 @@
 
   <script type="module" src="main.js"></script>
   <script type="module" src="ws-client.js"></script>
+
+  <!-- Lógica de la botonera (no necesita módulos) -->
+  <script>
+    // ── Sync botonera con el estado ──
+    function syncBotonera() {
+      const s = window.plantState;
+      if (!s) return;
+
+      // Botón start
+      const vb = document.getElementById('vbtn-start');
+      const lbl = document.getElementById('vbtn-start-label');
+      if (s.running) {
+        vb.classList.add('phys-btn--running');
+        vb.querySelector('.phys-btn-icon').textContent = '⏸';
+        lbl.textContent = 'DETENER';
+      } else {
+        vb.classList.remove('phys-btn--running');
+        vb.querySelector('.phys-btn-icon').textContent = '▶';
+        lbl.textContent = 'INICIAR';
+      }
+
+      // Semáforo
+      const r = document.getElementById('sema-r');
+      const y = document.getElementById('sema-y');
+      const g = document.getElementById('sema-g');
+      r.classList.toggle('sema-on-red',    s.alarm || s.emergency);
+      y.classList.toggle('sema-on-yellow', !s.running && !s.alarm && !s.emergency);
+      g.classList.toggle('sema-on-green',   s.running && !s.alarm);
+
+      // Modo toggle
+      const thumb = document.getElementById('toggle-thumb');
+      thumb.style.transform = s.mode === 'auto' ? 'translateY(0%)' : 'translateY(100%)';
+    }
+
+    // Sincronizar cada 200ms
+    setInterval(syncBotonera, 200);
+
+    // ── Toggle modo desde el switch ──
+    window.toggleMode = function () {
+      const s = window.plantState;
+      if (!s) return;
+      const newMode = s.mode === 'manual' ? 'auto' : 'manual';
+      window.setMode(newMode);
+    };
+
+    // ── Potenciómetro virtual (drag circular) ──
+    (function () {
+      const knob   = document.getElementById('knob');
+      const marker = document.getElementById('knob-marker');
+      const pctEl  = document.getElementById('knob-pct');
+
+      let isDragging = false;
+      let startY = 0;
+      let currentAngle = 0;   // −135° .. +135°
+      const MIN_ANG = -135, MAX_ANG = 135;
+
+      function setAngle(a) {
+        currentAngle = Math.max(MIN_ANG, Math.min(MAX_ANG, a));
+        marker.style.transform = `rotate(${currentAngle}deg) translateY(-38%)`;
+        const pct = Math.round((currentAngle - MIN_ANG) / (MAX_ANG - MIN_ANG) * 100);
+        pctEl.textContent = pct + '%';
+        if (window.plantState) {
+          window.plantState.speed = 0.3 + (pct / 100) * 1.7;
+        }
+      }
+
+      setAngle(0); // posición central = 50%
+
+      knob.addEventListener('mousedown', e => { isDragging = true; startY = e.clientY; e.preventDefault(); });
+      window.addEventListener('mousemove', e => {
+        if (!isDragging) return;
+        const delta = startY - e.clientY;
+        setAngle(currentAngle + delta * 0.8);
+        startY = e.clientY;
+      });
+      window.addEventListener('mouseup', () => { isDragging = false; });
+
+      // Touch
+      knob.addEventListener('touchstart', e => { isDragging = true; startY = e.touches[0].clientY; e.preventDefault(); }, { passive: false });
+      window.addEventListener('touchmove', e => {
+        if (!isDragging) return;
+        const delta = startY - e.touches[0].clientY;
+        setAngle(currentAngle + delta * 0.8);
+        startY = e.touches[0].clientY;
+      });
+      window.addEventListener('touchend', () => { isDragging = false; });
+    })();
+  </script>
+
 </body>
 </html>
