@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Línea de Envasado 3D — ExpoEducativa Tecnicatura UNaP</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- ── 3D Canvas ── -->
+  <canvas id="canvas3d"></canvas>
+
+  <!-- ── Panel lateral ── -->
+  <aside id="panel">
+
+    <header class="panel-header">
+      <div class="plant-title">
+        <span class="plant-icon">🏭</span>
+        <div>
+          <div class="plant-name">Línea de Envasado</div>
+          <div class="plant-sub">Polvos en Flowpack — UNaP</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Modo -->
+    <section class="panel-section">
+      <div class="section-label">MODO DE OPERACIÓN</div>
+      <div class="mode-toggle">
+        <button id="btn-manual" class="mode-btn active" onclick="setMode('manual')">MANUAL</button>
+        <button id="btn-auto"   class="mode-btn"        onclick="setMode('auto')">AUTO</button>
+      </div>
+    </section>
+
+    <!-- Etapas -->
+    <section class="panel-section">
+      <div class="section-label">ETAPAS</div>
+      <div class="stage-list">
+        <div class="stage-row">
+          <span class="stage-led" id="led-tolva"></span>
+          <span class="stage-name">Tolva</span>
+          <span class="stage-status" id="status-tolva">—</span>
+        </div>
+        <div class="stage-row">
+          <span class="stage-led" id="led-flowpack"></span>
+          <span class="stage-name">Flowpack</span>
+          <span class="stage-status" id="status-flowpack">—</span>
+        </div>
+        <div class="stage-row">
+          <span class="stage-led" id="led-cinta"></span>
+          <span class="stage-name">Cinta</span>
+          <span class="stage-status" id="status-cinta">—</span>
+        </div>
+        <div class="stage-row">
+          <span class="stage-led" id="led-robot"></span>
+          <span class="stage-name">Brazo robot</span>
+          <span class="stage-status" id="status-robot">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contadores -->
+    <section class="panel-section">
+      <div class="section-label">PRODUCCIÓN</div>
+      <div class="counters">
+        <div class="counter-card">
+          <div class="counter-val" id="cnt-bolsitas">0</div>
+          <div class="counter-lbl">bolsitas</div>
+        </div>
+        <div class="counter-card">
+          <div class="counter-val" id="cnt-cajas">0</div>
+          <div class="counter-lbl">cajas</div>
+        </div>
+        <div class="counter-card">
+          <div class="counter-val" id="cnt-throughput">0</div>
+          <div class="counter-lbl">bolsitas/min</div>
+        </div>
+      </div>
+      <!-- Mini sparkline -->
+      <canvas id="sparkline" width="260" height="48"></canvas>
+    </section>
+
+    <!-- Nivel tolva -->
+    <section class="panel-section">
+      <div class="section-label">NIVEL TOLVA</div>
+      <div class="level-bar-wrap">
+        <div class="level-bar-track">
+          <div class="level-bar-fill" id="level-bar-fill"></div>
+        </div>
+        <span class="level-pct" id="level-pct">85%</span>
+      </div>
+    </section>
+
+    <!-- Log de eventos -->
+    <section class="panel-section log-section">
+      <div class="section-label">LOG DE EVENTOS</div>
+      <div id="event-log" class="event-log"></div>
+    </section>
+
+    <!-- Controles -->
+    <section class="panel-section controls-section">
+      <button id="btn-start" class="ctrl-btn btn-start" onclick="toggleLine()">▶ INICIAR LÍNEA</button>
+      <button class="ctrl-btn btn-emergency" onclick="triggerEmergency()">🛑 PARADA DE EMERGENCIA</button>
+      <button class="ctrl-btn btn-reset" onclick="resetAlarm()">↺ RESET ALARMA</button>
+    </section>
+
+  </aside>
+
+  <!-- Alarma banner -->
+  <div id="alarm-banner" class="alarm-banner hidden">
+    ⚠️ ALARMA — NIVEL BAJO EN TOLVA
+  </div>
+
+  <script type="module" src="main.js"></script>
+  <script type="module" src="ws-client.js"></script>
+</body>
+</html>

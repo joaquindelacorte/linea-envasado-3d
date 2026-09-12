@@ -1,0 +1,278 @@
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-dark:    #0d1117;
+  --bg-panel:   #161b22;
+  --bg-section: #1c2230;
+  --border:     #30363d;
+  --green:      #3fb950;
+  --yellow:     #d29922;
+  --red:        #f85149;
+  --blue:       #58a6ff;
+  --orange:     #f0883e;
+  --text:       #e6edf3;
+  --text-muted: #8b949e;
+  --font-mono:  'Courier New', Courier, monospace;
+  --panel-w:    280px;
+}
+
+body {
+  background: var(--bg-dark);
+  color: var(--text);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+}
+
+/* ── Canvas 3D ── */
+#canvas3d {
+  flex: 1;
+  display: block;
+  height: 100vh;
+}
+
+/* ── Panel lateral ── */
+#panel {
+  width: var(--panel-w);
+  height: 100vh;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ── Panel header ── */
+.panel-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-dark);
+  position: sticky; top: 0; z-index: 10;
+}
+
+.plant-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plant-icon { font-size: 1.4rem; }
+.plant-name { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; color: var(--orange); }
+.plant-sub  { font-size: 0.6rem; color: var(--text-muted); letter-spacing: 0.04em; }
+
+/* ── Sections ── */
+.panel-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* ── Modo ── */
+.mode-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 7px 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-section);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mode-btn.active {
+  background: var(--blue);
+  color: #000;
+  border-color: var(--blue);
+}
+
+/* ── Etapas ── */
+.stage-list { display: flex; flex-direction: column; gap: 5px; }
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+}
+
+.stage-led {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  box-shadow: 0 0 0px transparent;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.stage-led.green  { background: var(--green);  box-shadow: 0 0 8px var(--green); }
+.stage-led.yellow { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+.stage-led.red    { background: var(--red);    box-shadow: 0 0 8px var(--red); }
+
+.stage-name   { flex: 1; color: var(--text); }
+.stage-status { font-size: 0.62rem; color: var(--text-muted); text-align: right; }
+
+/* ── Contadores ── */
+.counters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.counter-card {
+  flex: 1;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 4px;
+  text-align: center;
+}
+
+.counter-val {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--orange);
+  line-height: 1;
+}
+
+.counter-lbl {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+
+/* ── Sparkline ── */
+#sparkline {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border-radius: 4px;
+  background: var(--bg-section);
+}
+
+/* ── Nivel tolva ── */
+.level-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.level-bar-track {
+  flex: 1;
+  height: 14px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.level-bar-fill {
+  height: 100%;
+  width: 85%;
+  background: var(--green);
+  transition: width 0.5s ease, background 0.5s ease;
+  border-radius: 3px;
+}
+
+.level-pct {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── Log ── */
+.log-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.event-log {
+  flex: 1;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.event-log .log-entry { padding: 1px 0; border-bottom: 1px solid #1c2230; }
+.event-log .log-time  { color: var(--blue); }
+.event-log .log-alarm { color: var(--red); }
+.event-log .log-ok    { color: var(--green); }
+.event-log .log-info  { color: var(--text-muted); }
+
+/* ── Controles ── */
+.controls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 10px;
+  padding-bottom: 14px;
+}
+
+.ctrl-btn {
+  width: 100%;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.ctrl-btn:active { transform: scale(0.97); }
+
+.btn-start     { background: var(--green); color: #000; }
+.btn-emergency { background: var(--red);   color: #fff; }
+.btn-reset     { background: var(--bg-section); color: var(--text-muted); border: 1px solid var(--border); }
+
+.btn-start.running { background: var(--yellow); color: #000; }
+
+/* ── Alarma banner ── */
+.alarm-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--red);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  z-index: 100;
+  animation: blink 0.8s step-start infinite;
+  box-shadow: 0 4px 20px rgba(248,81,73,0.5);
+}
+
+.alarm-banner.hidden { display: none; }
+
+@keyframes blink {
+  50% { opacity: 0.3; }
+}
