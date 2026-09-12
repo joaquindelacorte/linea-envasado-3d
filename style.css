@@ -631,3 +631,20 @@ body { display:block; font-family:var(--font-mono); }
   .btn-label,.switch-label-top,.switch-label-bot { font-size:8px; letter-spacing:0; }
 }
 @media (max-width:390px) { .semaforo-cell { display:none; } }
+
+/* Indicadores didácticos de eficiencia por equipo. */
+.demo-badge { background:#e5f3f1; color:#14776e; padding:3px 6px; border-radius:4px; font-size:9px; letter-spacing:0.5px; }
+.oee-note { font-size:10px; color:var(--text-muted); line-height:1.55; margin-bottom:12px; }
+.oee-row { margin:12px 0; }
+.oee-heading { display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; }
+.oee-heading strong { color:#176f75; font-variant-numeric:tabular-nums; }
+.oee-track { height:5px; background:#e7edf0; border-radius:4px; overflow:hidden; }
+.oee-track > div { height:100%; border-radius:4px; transition:width 0.6s; }
+.oee-row small { display:block; font-size:9px; margin-top:4px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.oee-toggle { display:none; }
+@media(max-width:760px) {
+  .oee-toggle { display:block; position:fixed; right:14px; top:14px; z-index:70; border:1px solid #cfdae2; border-radius:9px; padding:10px 14px; background:white; color:#245264; font:12px 'Segoe UI',Arial,sans-serif; }
+  body.oee-open #panel { display:flex; top:58px; bottom:144px; height:auto; width:260px; z-index:65; border:1px solid var(--border); border-radius:12px 0 0 12px; box-shadow:-8px 8px 32px #243f4d22; }
+  body.oee-open #panel .panel-section:not(.oee-section) { display:none; }
+  body.oee-open #panel .panel-header { padding:14px 20px; }
+}

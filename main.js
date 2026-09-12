@@ -610,7 +610,7 @@ const lidMesh = bx(CAJA_W+0.08,0.07,CAJA_D+0.08,
   new THREE.MeshStandardMaterial({color:0xa0784a,roughness:0.9}),0,1.38,0);
 boxAreaGroup.add(lidMesh);
 lidMesh.rotation.x=-Math.PI/2; lidMesh.position.set(0,2.1,-0.9);
-let boxCloseTime=0;
+
 
 // ── Bolsitas DENTRO de la caja (se muestran de a una) ──
 const BAGS_IN_BOX = [];
@@ -628,24 +628,6 @@ bagPositions.forEach(([bx2,by,bz]) => {
   BAGS_IN_BOX.push(bg);
 });
 
-// Zona de apilado
-const shelfG = new THREE.Group(); shelfG.position.set(0,0,-3.8);
-[[-0.88,0.88],[-0.88,-0.88],[0.88,0.88],[0.88,-0.88]].forEach(([sx,sz])=>
-  shelfG.add(bx(0.10,4.0,0.10,steelDk(),sx,2.0,sz)));
-[0.20,1.65,3.10].forEach(sy=> shelfG.add(bx(1.85,0.07,1.85,steelDk(),0,sy,0)));
-boxAreaGroup.add(shelfG);
-
-const stackBoxes = [];
-const stackPos = [[0,0.85,0],[0,2.30,0],[0,3.75,0]];
-stackPos.forEach(([sx,sy,sz],i)=>{
-  const sg = new THREE.Group();
-  sg.position.set(sx,sy,-3.8+sz);
-  sg.add(bx(1.65,1.22,1.65,cardboard()));
-  sg.add(bx(0.16,0.02,1.67,new THREE.MeshStandardMaterial({color:0xe3c68b,roughness:0.8}),0,0.62,0));
-  sg.visible=false;
-  boxAreaGroup.add(sg);
-  stackBoxes.push(sg);
-});
 scene.add(boxAreaGroup);
 
 // ══════════════════════════════════════════════════════
@@ -682,7 +664,7 @@ makeLabel('CAJAS',    11.5, 2.8,0,'#f5c518','Paletizado');
 // ══════════════════════════════════════════════════════
 const robotAnim = {
   phase:0, t:0,
-  duration:       [0,  0.5, 0.2, 0.55, 0.65, 0.55, 0.2, 0.65],
+  duration:       [0, 0.7, 0.28, 0.65, 1.0, 0.65, 0.28, 0.65, 1.0],
   shoulderTargets:[0, -0.48,-0.48, 0.38, 0.38,-0.28,-0.28, 0],
   elbowTargets:   [0.2,0.68, 0.68,-0.28,-0.28, 0.58, 0.58, 0.2],
   hasBag:false, carriedBag:null,
@@ -882,6 +864,160 @@ function updateMachineVisuals(dt) {
   mHzB.position.x=0.28+(1-seal)*0.20;
 }
 
+// ── Detalles mecánicos del robot ──
+function addJointCover(parent,y,radius){
+  [-1,1].forEach(side=>{
+    const cover=cy(radius,radius,0.07,32,steelLt(),side*0.32,y,0,0,0,Math.PI/2);
+    parent.add(cover);
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3;
+      parent.add(cy(0.022,0.022,0.035,6,steelDk(),side*0.37,y+Math.cos(a)*radius*0.72,Math.sin(a)*radius*0.72,0,0,Math.PI/2));
+    }
+  });
+}
+addJointCover(shoulderPivot,0,0.32);
+addJointCover(elbowPivot,0,0.25);
+// Cableado sujeto al brazo: acompaña cada articulación, sin geometría nueva por cuadro.
+[shoulderPivot,elbowPivot].forEach((joint,index)=>{
+  const length=index?1.45:1.85;
+  const curve=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.28,0.05,0.12),new THREE.Vector3(0.40,0.3,0.16),
+    new THREE.Vector3(0.36,length-0.15,0.16),new THREE.Vector3(0.23,length,0.1)
+  ]);
+  joint.add(new THREE.Mesh(new THREE.TubeGeometry(curve,20,0.045,8,false),rubber()));
+  [0.45,length-0.3].forEach(y=>joint.add(bx(0.12,0.055,0.13,steelLt(),0.36,y,0.16)));
+});
+[-1,1].forEach(side=>{
+  robotGroup.add(bx(0.11,0.035,0.11,steelLt(),side*0.68,0.22,0.65));
+  robotGroup.add(bx(0.11,0.035,0.11,steelLt(),side*0.68,0.22,-0.65));
+});
+const wristCuff=cy(0.22,0.22,0.09,24,steelLt(),0,-0.27,0);
+wristPivot.add(wristCuff);
+[garraL,garraR].forEach(finger=>finger.add(bx(0.025,0.16,0.20,rubber(),0,-0.13,0)));
+
+// ── Flowpaquera: HMI frontal, cilindros, guardas y camino del film ──
+const hmiTexture=processTexture((ctx,w,h)=>{
+  ctx.fillStyle='#143140';ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='#5ce0bd';ctx.font='bold 22px Arial';ctx.fillText('FLOWPACK 01',16,30);
+  ctx.fillStyle='#dbe9ef';ctx.font='16px Arial';ctx.fillText('SELLADO  165 °C',16,65);
+  ctx.fillText('CICLO AUTOMÁTICO',16,94);
+  ctx.fillStyle='#51c8a6';ctx.fillRect(16,108,200,5);
+});
+fpGroup.add(bx(0.9,0.66,0.15,steelDk(),-1.04,2.54,1.55));
+fpGroup.add(bx(0.80,0.51,0.018,new THREE.MeshBasicMaterial({map:hmiTexture}),-1.04,2.56,1.64));
+fpGroup.add(sp(0.055,greenLed(),-1.25,2.14,1.62));
+fpGroup.add(sp(0.075,redLed(),-0.93,2.14,1.62));
+// Infeed film behind forming tube, joining the visible reel to the guides.
+const filmFeed=new THREE.Mesh(new THREE.PlaneGeometry(0.62,1.12),webFilm.material);
+filmFeed.position.set(0,3.32,0.65);filmFeed.rotation.x=-0.20;fpGroup.add(filmFeed);
+[-1,1].forEach(side=>{
+  fpGroup.add(cy(0.09,0.09,0.55,20,steelDk(),side*0.92,1.08,0.8,0,0,Math.PI/2));
+  const rod=cy(0.035,0.035,0.45,16,steelLt(),side*0.4,0,0.8,0,0,Math.PI/2);
+  (side<0?mHz:mHzB).add(rod);
+  fpGroup.add(bx(0.07,1.9,0.08,steelLt(),side*1.42,2.0,1.51));
+});
+// Ventilación del gabinete y bisagras de la guarda.
+for(let i=0;i<7;i++)fpGroup.add(bx(0.035,0.52,0.035,steelDk(),-1.1+i*0.12,0.5,1.48));
+[1.35,2.65].forEach(y=>fpGroup.add(cy(0.045,0.045,0.18,12,steelDk(),1.43,y,1.54)));
+
+// ── AMR: llega, recibe una caja, sale del límite y libera el puesto ──
+function smoothMotion(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*t*(10+t*(-15+6*t));}
+const logistics={phase:'idle',t:0,boxReady:false,closeT:0,delivered:0};
+const amr=new THREE.Group();amr.visible=false;scene.add(amr);
+amr.add(bx(2.25,0.48,1.85,panelBl(),0,0.48,0));
+amr.add(bx(2.35,0.13,1.94,rubber(),0,0.27,0));
+amr.add(bx(2.1,0.10,1.75,steelLt(),0,0.78,0));
+const amrWheels=[];
+[-0.74,0.74].forEach(x=>[-0.85,0.85].forEach(z=>{
+  const wheel=cy(0.24,0.24,0.16,24,rubber(),x,0.24,z,Math.PI/2);
+  wheel.add(cy(0.12,0.12,0.17,16,steelLt()));amr.add(wheel);amrWheels.push(wheel);
+}));
+amr.add(cy(0.15,0.15,0.13,24,steelDk(),0.87,0.87,0));
+amr.add(cy(0.16,0.16,0.04,24,greenLed(),0.87,0.94,0));
+[-0.62,0.62].forEach(z=>amr.add(bx(0.025,0.07,0.22,new THREE.MeshStandardMaterial({color:0x88e6ff,emissive:0x33bbee,emissiveIntensity:1}),-1.14,0.50,z)));
+// Top rollers carry the sealed carton.
+for(let x=-0.85;x<=0.85;x+=0.28)amr.add(cy(0.055,0.055,1.70,16,steelLt(),x,0.87,0,Math.PI/2));
+const transferDeck=new THREE.Group();transferDeck.visible=false;amr.add(transferDeck);
+transferDeck.add(bx(1.85,0.06,2.6,steelDk(),0,0.7,-1.65));
+for(let z=-2.8;z<-0.5;z+=0.25)transferDeck.add(cy(0.055,0.055,1.75,16,steelLt(),0,0.76,z,0,0,Math.PI/2));
+const cargo=new THREE.Group();cargo.visible=false;scene.add(cargo);
+cargo.add(bx(CAJA_W,CAJA_H,CAJA_D,cardboard(),0,CAJA_H/2,0));
+cargo.add(bx(0.18,0.025,CAJA_D+0.015,new THREE.MeshStandardMaterial({color:0xe4c590}),0,CAJA_H+0.014,0));
+const cargoLabel=processTexture((ctx,w,h)=>{
+  ctx.fillStyle='#f6f3e8';ctx.fillRect(0,0,w,h);ctx.fillStyle='#243d49';ctx.font='bold 25px Arial';ctx.fillText('UNaP / 06 UN.',14,38);
+  for(let i=0;i<50;i++)if(i%3!==0)ctx.fillRect(16+i*4,56,i%2+1,54);
+});
+cargo.add(bx(0.7,0.34,0.015,new THREE.MeshBasicMaterial({map:cargoLabel}),0,0.70,CAJA_D/2+0.01));
+// Dock markings leave a dedicated aisle in front of the line.
+for(let x=10.2;x<13;x+=0.35)scene.add(bx(0.18,0.012,0.12,yellow(),x,0.015,4.55));
+function setAmrPhase(phase){logistics.phase=phase;logistics.t=0;}
+function updateLogistics(dt){
+  const l=logistics;
+  if(l.boxReady){
+    l.closeT=Math.min(1,l.closeT+dt);
+    const open=1-smoothMotion(l.closeT);
+    lidMesh.rotation.x=-Math.PI/2*open;lidMesh.position.set(0,1.56+0.54*open,-0.9*open);
+  }
+  if(l.phase==='idle'){
+    if(!l.boxReady)return;
+    amr.visible=true;amr.position.set(30,0,3.45);amr.rotation.y=0;
+    setAmrPhase('arriving');
+  }
+  l.t+=dt;
+  const durations={arriving:5,loading:2,departing:5};
+  const p=Math.min(l.t/durations[l.phase],1),ease=smoothMotion(p);
+  const oldX=amr.position.x;
+  if(l.phase==='arriving')amr.position.x=lerp(30,11.5,ease);
+  if(l.phase==='loading'){
+    transferDeck.visible=true;cargo.visible=true;activeBoxGroup.visible=false;lidMesh.visible=false;
+    cargo.position.set(11.5,lerp(0.2,0.94,ease)+Math.sin(Math.PI*ease)*0.35,lerp(0,3.45,ease));
+  }
+  if(l.phase==='departing'){
+    amr.position.x=lerp(11.5,30,ease);
+    cargo.position.set(amr.position.x,0.94,amr.position.z);
+  }
+  amrWheels.forEach(w=>w.rotateY(-(amr.position.x-oldX)/0.24));
+  if(p===1){
+    if(l.phase==='arriving'){
+      setAmrPhase('loading');logEvent('AMR en posición: cargando caja','info');
+    }else if(l.phase==='loading'){
+      transferDeck.visible=false;l.boxReady=false;BAGS_IN_BOX.forEach(b=>b.visible=false);
+      activeBoxGroup.visible=true;lidMesh.visible=true;
+      lidMesh.rotation.x=-Math.PI/2;lidMesh.position.set(0,2.1,-0.9);
+      setAmrPhase('departing');logEvent('Caja retirada. Puesto disponible para una nueva caja','ok');
+    }else{
+      amr.visible=false;cargo.visible=false;l.delivered++;
+      setAmrPhase('idle');logEvent(`AMR fuera de planta · ${l.delivered} cajas despachadas`,'ok');
+    }
+  }
+}
+
+// ── OEE didáctico: factores sintéticos, sin vínculo con telemetría real ──
+let demoTime=0,lastOeeTick=-1;
+const demoEquipment=[['tolva','Tolva',96,94,99],['flowpack','Flowpaquera',94,90,98],['cinta','Cinta',98,96,99.5],['robot','Robot',95,92,99],['cajas','Encajado',96,91,99],['amr','Carrito AMR',97,93,99.5]];
+const oeeSection=document.createElement('section');oeeSection.className='panel-section oee-section';
+oeeSection.innerHTML='<div class="section-label">OEE POR EQUIPO <span class="demo-badge">DEMO</span></div><p class="oee-note">Valores simulados para la exposición.<br>OEE = Disponibilidad × Rendimiento × Calidad.</p>'+demoEquipment.map(([id,name])=>`<div class="oee-row"><div class="oee-heading"><span>${name}</span><strong id="oee-${id}">—</strong></div><div class="oee-track"><div id="oee-bar-${id}"></div></div><small id="oee-factors-${id}"></small></div>`).join('')+'<p id="amr-status" class="oee-note"></p>';
+document.querySelector('.log-section').before(oeeSection);
+const oeeToggle=document.createElement('button');oeeToggle.className='oee-toggle';oeeToggle.textContent='OEE · Demo';oeeToggle.setAttribute('aria-expanded','false');
+oeeToggle.onclick=()=>{const open=document.body.classList.toggle('oee-open');oeeToggle.setAttribute('aria-expanded',String(open));};
+document.body.appendChild(oeeToggle);
+function demoFactors(index,time){
+  const e=demoEquipment[index];
+  return e.slice(2).map((v,j)=>Math.min(100,Math.max(0,Math.round((v+Math.sin(time/18+index+j)*0.8)*10)/10)));
+}
+function updateDemoOEE(){
+  const tick=Math.floor(demoTime*2);
+  if(tick===lastOeeTick)return;lastOeeTick=tick;
+  demoEquipment.forEach(([id],i)=>{
+    const [a,p,q]=demoFactors(i,demoTime),oee=a*p*q/10000;
+    document.getElementById('oee-'+id).textContent=oee.toFixed(1)+'%';
+    const bar=document.getElementById('oee-bar-'+id);bar.style.width=oee+'%';bar.style.background=oee>=85?'#178b80':'#d39b30';
+    document.getElementById('oee-factors-'+id).textContent=`D ${a.toFixed(1)}% · R ${p.toFixed(1)}% · C ${q.toFixed(1)}%`;
+  });
+  const names={idle:'Disponible',arriving:'En camino',loading:'Cargando caja',departing:'Retirando caja'};
+  document.getElementById('amr-status').textContent=`AMR: ${names[logistics.phase]} · Despachadas: ${logistics.delivered}`;
+}
+
 // ══════════════════════════════════════════════════════
 //  GAME LOOP
 // ══════════════════════════════════════════════════════
@@ -910,12 +1046,8 @@ function animate(ts){
     animateRobot(dt);
 
     updateMachineVisuals(dt * s.speed);
-    if(boxCloseTime>0){
-      boxCloseTime=Math.max(0,boxCloseTime-dt*s.speed);
-      const openness=boxCloseTime>0.6?1-(1.2-boxCloseTime)/0.6:1-boxCloseTime/0.6;
-      lidMesh.rotation.x=-Math.PI/2*openness;
-      lidMesh.position.set(0,1.56+0.54*openness,-0.9*openness);
-    }
+    updateLogistics(dt*s.speed);
+    demoTime+=dt*s.speed;
 
     // Compuerta
     const tRot=s.running?0.75:0;
@@ -943,6 +1075,7 @@ function animate(ts){
     }
   }
 
+  updateDemoOEE();
   updateSignals();
   controls.update();
   updatePanel();
@@ -972,7 +1105,7 @@ function moveBags(dt){
     if(p>=1.0){
       bag.position.set(BELT_END_X,BELT_Y,0);
       bag.userData.readyForPick=true;
-      if(!robotAnim.hasBag && robotAnim.phase===0){
+      if(!robotAnim.hasBag && robotAnim.phase===0 && !logistics.boxReady){
         robotAnim.phase=1; robotAnim.t=0; robotAnim.carriedBag=bag;
       }
     }
@@ -1009,12 +1142,14 @@ function animateRobot(dt){
     if(ra.phase===3) robotTarget.set(BELT_END_X,2.7,0);
     if(ra.phase===4) robotTarget.set(destination.x,2.7,destination.z);
     if(ra.phase===5 || ra.phase===6) robotTarget.copy(destination);
-    if(ra.phase===7) robotTarget.set(BELT_END_X,2.7,0);
+    if(ra.phase===7) robotTarget.set(robotTool.x,2.7,robotTool.z);
+    if(ra.phase===8) robotTarget.set(BELT_END_X,2.7,0);
   }
   ra.t+=dt*plantState.speed;
   const pt=Math.min(ra.t/ra.duration[ra.phase],1);
-  const eased=pt*pt*(3-2*pt);
+  const eased=smoothMotion(pt);
   robotTool.lerpVectors(robotFrom,robotTarget,eased);
+  if(ra.phase===4 || ra.phase===8) robotTool.z+=0.55*Math.sin(Math.PI*eased);
   poseRobot(robotTool);
   const grip=ra.phase===2?lerp(0.27,0.21,eased):ra.phase===6?lerp(0.21,0.27,eased):ra.hasBag?0.21:0.27;
   garraL.position.x=-grip; garraR.position.x=grip;
@@ -1042,15 +1177,12 @@ function lerp(a,b,t){ return a+(b-a)*t; }
 
 function completarCaja(){
   plantState._bolsitasEnCaja=0;
-  // Ocultar bolsitas del display de caja
-  BAGS_IN_BOX.forEach(b=>b.visible=false);
+  logistics.boxReady=true;
+  logistics.closeT=0;
   plantState.cajas++;
   playBeep(800,0.15); playBeep(1000,0.1);
   logEvent(`📦 Caja #${plantState.cajas} completada (${BOLSITAS_POR_CAJA} bolsitas)`,'ok');
-  // Tapa baja
-  boxCloseTime=1.2;
-  const idx=Math.min(plantState.cajas-1,stackBoxes.length-1);
-  if(idx>=0) stackBoxes[idx].visible=true;
+  logEvent('AMR solicitado: caja lista para retiro','info');
   if(plantState.mode==='auto' && plantState.nivel<0.3){
     plantState.nivel=1.0; plantState.alarm=false;
     logEvent('Tolva recargada (modo auto)','ok');
