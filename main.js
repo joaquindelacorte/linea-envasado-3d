@@ -19,6 +19,7 @@ export const plantState = {
   bolsitas: 0,
   cajas: 0,
   speed: 1.0,
+  beltSpeed: 1.0, robotSpeed: 1.0,
   _flowpackTimer: 0,
   _bolsitasEnCaja: 0,
 };
@@ -696,8 +697,12 @@ function updatePanel() {
   fill.style.width=pct+'%';
   fill.style.background=pct>40?'var(--green)':pct>20?'var(--yellow)':'var(--red)';
   document.getElementById('level-pct').textContent=pct+'%';
-  s.alarm ? document.getElementById('alarm-banner').classList.remove('hidden')
-           : document.getElementById('alarm-banner').classList.add('hidden');
+  const banner=document.getElementById('alarm-banner');
+  banner.textContent='🛑 PARADA DE EMERGENCIA GENERAL — RESET y luego INICIAR';
+  banner.classList.toggle('hidden',!s.emergency);
+  setStatus('tolva',s.emergency?'Emergencia':s.nivel<0.025?'Sin polvo':game.pending.powder?'Recargando':'Disponible');
+  setStatus('flowpack',s.emergency?'Emergencia':!s.running?'Detenida':!flowReady()?'Esperando':'Envasando');
+  setStatus('robot',s.emergency?'Emergencia':!game.palletReady?'Sin pallet':logistics.boxReady?'Esperando retiro':s.running?'Activo':'Detenido');
 }
 function setLed(id,cls){ document.getElementById('led-'+id).className='stage-led '+cls; }
 function setStatus(id,txt){ document.getElementById('status-'+id).textContent=txt; }
@@ -730,7 +735,8 @@ function drawSparkline(){
 //  CONTROLES GLOBALES
 // ══════════════════════════════════════════════════════
 window.toggleLine=function(){
-  if(plantState.emergency) return;
+  if(plantState.emergency || game.finished) return;
+  game.started=true;
   plantState.running=!plantState.running;
   const btn=document.getElementById('btn-start');
   if(plantState.running){
@@ -756,7 +762,7 @@ window.triggerEmergency=function(){
   playAlarm(); updatePanel();
 };
 window.resetAlarm=function(){
-  plantState.alarm=false; plantState.emergency=false;
+  plantState.emergency=false; plantState.running=false; plantState.alarm=false;
   logEvent('Alarma reseteada','ok'); updatePanel();
 };
 window.plantState=plantState;
@@ -856,7 +862,9 @@ function updateSignals() {
 }
 function updateMachineVisuals(dt) {
   const phase=plantState._flowpackTimer/CYCLE_FLOWPACK;
-  beltTexture.offset.x=(beltTexture.offset.x-dt*0.6)%1;
+  beltTexture.offset.x=(beltTexture.offset.x-dt*plantState.beltSpeed*0.12)%1;
+  if(!flowReady())return;
+  dt*=plantState.speed;
   filmTexture.offset.y=(filmTexture.offset.y+dt*0.34)%1;
   filmRollers.forEach(roller => roller.rotateY(dt*1.6));
   const seal=Math.max(0,1-Math.abs(phase-0.82)/0.14);
@@ -982,72 +990,200 @@ function updateLogistics(dt){
       setAmrPhase('loading');logEvent('AMR en posición: cargando caja','info');
     }else if(l.phase==='loading'){
       transferDeck.visible=false;l.boxReady=false;BAGS_IN_BOX.forEach(b=>b.visible=false);
-      activeBoxGroup.visible=true;lidMesh.visible=true;
+      game.palletReady=false;
+      ensurePallet();
       lidMesh.rotation.x=-Math.PI/2;lidMesh.position.set(0,2.1,-0.9);
       setAmrPhase('departing');logEvent('Caja retirada. Puesto disponible para una nueva caja','ok');
     }else{
-      amr.visible=false;cargo.visible=false;l.delivered++;
+      amr.visible=false;cargo.visible=false;l.delivered++; recordOutput('amr');
       setAmrPhase('idle');logEvent(`AMR fuera de planta · ${l.delivered} cajas despachadas`,'ok');
     }
   }
 }
 
-// ── OEE didáctico: factores sintéticos, sin vínculo con telemetría real ──
-let demoTime=0,lastOeeTick=-1;
-const demoEquipment=[['tolva','Tolva',96,94,99],['flowpack','Flowpaquera',94,90,98],['cinta','Cinta',98,96,99.5],['robot','Robot',95,92,99],['cajas','Encajado',96,91,99],['amr','Carrito AMR',97,93,99.5]];
-const oeeSection=document.createElement('section');oeeSection.className='panel-section oee-section';
-oeeSection.innerHTML='<div class="section-label">OEE POR EQUIPO <span class="demo-badge">DEMO</span></div><p class="oee-note">Valores simulados para la exposición.<br>OEE = Disponibilidad × Rendimiento × Calidad.</p>'+demoEquipment.map(([id,name])=>`<div class="oee-row"><div class="oee-heading"><span>${name}</span><strong id="oee-${id}">—</strong></div><div class="oee-track"><div id="oee-bar-${id}"></div></div><small id="oee-factors-${id}"></small></div>`).join('')+'<p id="amr-status" class="oee-note"></p>';
-document.querySelector('.log-section').before(oeeSection);
-const oeeToggle=document.createElement('button');oeeToggle.className='oee-toggle';oeeToggle.textContent='OEE · Demo';oeeToggle.setAttribute('aria-expanded','false');
-oeeToggle.onclick=()=>{const open=document.body.classList.toggle('oee-open');oeeToggle.setAttribute('aria-expanded',String(open));};
-document.body.appendChild(oeeToggle);
-function demoFactors(index,time){
-  const e=demoEquipment[index];
-  return e.slice(2).map((v,j)=>Math.min(100,Math.max(0,Math.round((v+Math.sin(time/18+index+j)*0.8)*10)/10)));
+// ── Celda protegida del robot con puerta de transferencia enclavada ──
+const cage=new THREE.Group();scene.add(cage);
+const meshFenceMat=new THREE.LineBasicMaterial({color:0x637780,transparent:true,opacity:0.42});
+function fencePanel(x1,z1,x2,z2,height=3.4,base=0){
+  const length=Math.hypot(x2-x1,z2-z1),points=[];
+  for(let y=base;y<=height;y+=0.18)points.push(new THREE.Vector3(x1,y,z1),new THREE.Vector3(x2,y,z2));
+  for(let d=0;d<=length;d+=0.18){const f=d/length;points.push(new THREE.Vector3(lerp(x1,x2,f),base,lerp(z1,z2,f)),new THREE.Vector3(lerp(x1,x2,f),height,lerp(z1,z2,f)));}
+  const group=new THREE.Group();group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points),meshFenceMat));
+  [[x1,z1],[x2,z2]].forEach(([x,z])=>group.add(bx(0.09,height,0.09,yellow(),x,height/2,z)));
+  const beam=bx(length,0.08,0.08,yellow(),(x1+x2)/2,height,(z1+z2)/2);beam.rotation.y=-Math.atan2(z2-z1,x2-x1);group.add(beam);
+  cage.add(group);return group;
 }
-function updateDemoOEE(){
-  const tick=Math.floor(demoTime*2);
-  if(tick===lastOeeTick)return;lastOeeTick=tick;
-  demoEquipment.forEach(([id],i)=>{
-    const [a,p,q]=demoFactors(i,demoTime),oee=a*p*q/10000;
-    document.getElementById('oee-'+id).textContent=oee.toFixed(1)+'%';
-    const bar=document.getElementById('oee-bar-'+id);bar.style.width=oee+'%';bar.style.background=oee>=85?'#178b80':'#d39b30';
-    document.getElementById('oee-factors-'+id).textContent=`D ${a.toFixed(1)}% · R ${p.toFixed(1)}% · C ${q.toFixed(1)}%`;
+fencePanel(5.7,-2.2,13.3,-2.2);
+fencePanel(13.3,-2.2,13.3,2.2);
+fencePanel(5.7,-2.2,5.7,-1.2);
+fencePanel(5.7,1.2,5.7,2.2);
+fencePanel(5.7,-1.2,5.7,1.2,3.4,1.55); // túnel de entrada de producto
+fencePanel(5.7,2.2,10.35,2.2);
+fencePanel(12.65,2.2,13.3,2.2);
+const transferGate=fencePanel(10.35,2.2,12.65,2.2,2.1);
+let gateLift=0;
+function updateSafetyCell(dt){
+  const target=logistics.phase==='loading'?2.3:0;
+  gateLift+=THREE.MathUtils.clamp(target-gateLift,-dt*2.5,dt*2.5);
+  transferGate.position.y=gateLift;
+}
+// Plataforma superior junto a la boca de carga, escalera de dos tramos y barandas.
+const access=new THREE.Group();scene.add(access);
+access.add(bx(2.1,0.14,3.0,steelDk(),-12.0,8.0,-0.1));
+[-12.9,-11.1].forEach(x=>[-1.4,1.25].forEach(z=>access.add(bx(0.11,8.0,0.11,steelDk(),x,4,z))));
+function railing(x1,z1,x2,z2,y){
+ const length=Math.hypot(x2-x1,z2-z1);
+ for(let i=0;i<=4;i++){const f=i/4;access.add(bx(0.055,1.05,0.055,yellow(),lerp(x1,x2,f),y+0.52,lerp(z1,z2,f)));}
+ [0.55,1.05].forEach(h=>{const rail=bx(length,0.055,0.055,yellow(),(x1+x2)/2,y+h,(z1+z2)/2);rail.rotation.y=-Math.atan2(z2-z1,x2-x1);access.add(rail);});
+}
+railing(-13,1.35,-11,1.35,8.05);railing(-13,-1.55,-13,1.35,8.05);railing(-11,-1.55,-11,1.35,8.05);
+access.add(bx(2.6,0.12,1.0,steelDk(),-12.55,4.0,-5.0));
+for(let flight=0;flight<2;flight++){
+ const x=flight===0?-13.2:-11.9;
+ for(let i=0;i<14;i++){
+   const f=(i+1)/14,y=flight*4+f*4,z=flight===0?lerp(-1.7,-4.7,f):lerp(-4.7,-1.7,f);
+   access.add(bx(1.0,0.08,0.27,steelLt(),x,y,z));
+   if(i%3===0)[-0.49,0.49].forEach(side=>access.add(bx(0.04,0.95,0.04,yellow(),x+side,y+0.47,z)));
+ }
+ [-0.49,0.49].forEach(side=>{
+   const from=new THREE.Vector3(x+side,flight*4+1,flight===0?-1.7:-4.7),to=new THREE.Vector3(x+side,flight*4+5,flight===0?-4.7:-1.7);
+   const line=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,from.distanceTo(to),8),yellow());line.position.copy(from).add(to).multiplyScalar(0.5);line.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),to.sub(from).normalize());access.add(line);
+ });
+}
+makeLabel('ABASTECIMIENTO',-12.0,9.7,-1,'#178b80','Plataforma de carga');
+
+// ── Juego de operación: todos los indicadores salen de eventos de esta partida ──
+const equipment=[['tolva','Tolva',6],['flowpack','Flowpaquera',6],['cinta','Cinta',6],['robot','Robot',5.26],['cajas','Encajado',36],['amr','Carrito AMR',36]];
+const game={started:false,finished:false,elapsed:0,duration:180,film:18,pallets:2,palletReady:true,
+  attempts:0,rejects:0,pending:{powder:0,film:0,pallets:0},metrics:Object.fromEntries(equipment.map(([id])=>[id,{up:0,total:0,good:0}]))};
+function recordOutput(id,good=true){game.metrics[id].total++;if(good)game.metrics[id].good++;}
+function entranceFree(){return bagsOnBelt.some(b=>!b.userData.active && b!==robotAnim.carriedBag) && !bagsOnBelt.some(b=>b.userData.active && b.userData.progress<0.12);}
+function flowReady(){return plantState.nivel>=0.025 && game.film>0 && !game.pending.powder && !game.pending.film && entranceFree();}
+function ensurePallet(){
+  if(!game.palletReady && !logistics.boxReady && game.pallets>0){game.pallets--;game.palletReady=true;}
+  activeBoxGroup.visible=game.palletReady && logistics.phase!=='loading';
+  palG.visible=game.palletReady;
+  lidMesh.visible=game.palletReady && logistics.phase!=='loading';
+}
+window.replenish=function(kind){
+  if(game.finished || plantState.emergency || !(kind in game.pending) || game.pending[kind]>0)return;
+  if(kind==='powder' && plantState.nivel>0.975 || kind==='film' && game.film===24 || kind==='pallets' && game.pallets>=3)return;
+  game.pending[kind]={powder:4,film:5,pallets:3}[kind];
+  logEvent('Reposición en curso: '+{powder:'polvo',film:'film',pallets:'pallets'}[kind],'info');
+};
+window.setEquipmentSpeed=function(id,value){
+  const v=Math.max(0.2,Math.min(2,Number(value)));if(!Number.isFinite(v))return;
+  plantState[id==='flowpack'?'speed':id==='cinta'?'beltSpeed':'robotSpeed']=v;
+};
+function updateGame(dt){
+  const s=plantState;
+  s.speed=Number.isFinite(s.speed)?THREE.MathUtils.clamp(s.speed,0.2,2):1;
+  if(game.finished){s.running=false;return;}
+  if(game.started){
+    const slice=Math.min(dt,game.duration-game.elapsed);game.elapsed+=slice;
+    const ready=s.running&&!s.emergency;
+    const available={tolva:ready&&s.nivel>=0.025&&!game.pending.powder,flowpack:ready&&flowReady(),cinta:ready,robot:ready&&game.palletReady&&!logistics.boxReady&&gateLift<0.02,cajas:ready&&game.palletReady&&!logistics.boxReady,amr:ready};
+    equipment.forEach(([id])=>{if(available[id])game.metrics[id].up+=slice;});
+    if(game.elapsed>=game.duration){game.finished=true;s.running=false;logEvent('Partida terminada. ¡Mirá tu OEE y volvé a intentar!','ok');return;}
+  }
+  if(!s.emergency){
+    for(const kind of Object.keys(game.pending)){
+      if(game.pending[kind]<=0)continue;
+      game.pending[kind]=Math.max(0,game.pending[kind]-dt);
+      if(game.pending[kind]===0){
+        if(kind==='powder')s.nivel=1;
+        if(kind==='film')game.film=24;
+        if(kind==='pallets')game.pallets=3;
+        logEvent('Reposición completada','ok');
+      }
+    }
+    ensurePallet();
+  }
+  s.alarm=s.emergency;
+}
+function oeeFor(id,ideal){
+  const m=game.metrics[id],a=game.elapsed?m.up/game.elapsed:0;
+  const p=m.up?Math.min(1,m.total*ideal/m.up):0,q=m.total?m.good/m.total:1;
+  return {a:a*100,p:p*100,q:q*100,oee:a*p*q*100};
+}
+function gameAdvice(){
+  if(plantState.emergency)return 'Emergencia general activada. Liberá con RESET y luego INICIAR.';
+  if(game.finished)return '¡Tiempo! Tu resultado depende de producción, esperas y rechazos.';
+  if(!game.started)return 'Objetivo: OEE de línea ≥ 75% en 3 minutos. Reponé a tiempo y equilibrá los equipos.';
+  if(!game.palletReady)return 'Sin pallet en encajado: el robot espera. Reponé pallets.';
+  if(game.pending.powder || game.pending.film)return 'Reposición en curso: la flowpaquera espera, la cinta y el robot siguen.';
+  if(plantState.nivel<0.025)return 'Sin polvo: recargá la tolva. Los demás equipos pueden vaciar la línea.';
+  if(game.film===0)return 'Se terminó el flexible. Cambiá la bobina de film.';
+  if(!entranceFree())return 'Cinta llena: bajá la flowpaquera o acelerá cinta y robot.';
+  if(bagsOnBelt.filter(b=>b.userData.active).length>=4)return 'Se acumulan bolsitas: el robot o el encajado limitan la producción.';
+  if(plantState.speed>1.45)return 'La flowpaquera va demasiado rápido: 1 de cada 5 sellados se rechaza.';
+  if(game.film<=5 || plantState.nivel<0.2 || game.pallets===0)return 'Quedan pocos consumibles: prepará la próxima reposición.';
+  return 'Buen ritmo. Buscá un flujo parejo y evitá paradas por consumibles.';
+}
+const gamePanel=document.createElement('section');gamePanel.className='panel-section oee-section game-section';
+gamePanel.innerHTML=`<div class="section-label">DESAFÍO OEE <span class="demo-badge">JUEGO</span></div>
+<div class="game-score"><strong id="game-oee">0%</strong><span>OEE de línea · meta 75%</span><b id="game-time">3:00</b></div>
+<p id="game-advice" class="game-advice"></p><p class="oee-note">Modelo didáctico: OEE = D × R × C. Se calcula desde los tiempos y la producción de esta partida. El reloj sigue durante las paradas.</p>
+<div class="supply-grid">
+${[['powder','Polvo'],['film','Flexible / film'],['pallets','Pallets']].map(([id,name])=>`<button id="supply-${id}" onclick="replenish('${id}')"><b>${name}</b><span id="stock-${id}"></span><small id="supply-time-${id}">Reponer</small></button>`).join('')}</div>
+<div class="speed-controls">${[['flowpack','Flowpaquera'],['cinta','Cinta'],['robot','Robot']].map(([id,name])=>`<label>${name} <output id="speed-label-${id}">1.0×</output><input aria-label="Velocidad ${name}" id="speed-${id}" type="range" min="0.2" max="2" step="0.1" value="1" oninput="setEquipmentSpeed('${id}',this.value)"></label>`).join('')}</div>
+<p id="game-production" class="oee-note"></p>
+${equipment.map(([id,name])=>`<div class="oee-row"><div class="oee-heading"><span>${name}</span><strong id="oee-${id}">—</strong></div><div class="oee-track"><div id="oee-bar-${id}"></div></div><small id="oee-factors-${id}"></small></div>`).join('')}
+<p id="amr-status" class="oee-note"></p><button class="new-game" onclick="location.reload()">Nueva partida</button>`;
+document.querySelector('.panel-header').after(gamePanel);
+const oeeToggle=document.createElement('button');oeeToggle.className='oee-toggle';oeeToggle.textContent='Jugar / OEE';oeeToggle.setAttribute('aria-expanded','false');
+oeeToggle.onclick=()=>{const open=document.body.classList.toggle('oee-open');oeeToggle.setAttribute('aria-expanded',String(open));};document.body.appendChild(oeeToggle);
+let gameUiClock=0;
+function updateGameUI(){
+  // UI uses actual game counters; no random/demo percentages.
+  const overall=oeeFor('robot',6);
+  document.getElementById('game-oee').textContent=overall.oee.toFixed(0)+'%';
+  const remain=Math.ceil(game.duration-game.elapsed);
+  document.getElementById('game-time').textContent=game.finished?'FIN':Math.floor(remain/60)+':'+String(remain%60).padStart(2,'0');
+  document.getElementById('game-advice').textContent=gameAdvice();
+  document.getElementById('game-production').textContent=`Buenas: ${plantState.bolsitas} · Rechazos: ${game.rejects} · En caja: ${game.metrics.robot.good}`;
+  const stocks={powder:Math.round(plantState.nivel*100)+'%',film:game.film+' bolsitas',pallets:game.pallets+' de reserva'};
+  for(const id of Object.keys(stocks)){
+    document.getElementById('stock-'+id).textContent=stocks[id];
+    document.getElementById('supply-time-'+id).textContent=game.pending[id]>0?Math.ceil(game.pending[id])+' s':'Reponer';
+    document.getElementById('supply-'+id).disabled=plantState.emergency||game.finished||game.pending[id]>0;
+  }
+  [['flowpack','speed'],['cinta','beltSpeed'],['robot','robotSpeed']].forEach(([id,key])=>{
+    document.getElementById('speed-label-'+id).textContent=plantState[key].toFixed(1)+'×';
+    document.getElementById('speed-'+id).value=plantState[key];
   });
-  const names={idle:'Disponible',arriving:'En camino',loading:'Cargando caja',departing:'Retirando caja'};
-  document.getElementById('amr-status').textContent=`AMR: ${names[logistics.phase]} · Despachadas: ${logistics.delivered}`;
+  equipment.forEach(([id,,ideal])=>{
+    const m=oeeFor(id,ideal);document.getElementById('oee-'+id).textContent=m.oee.toFixed(1)+'%';
+    const bar=document.getElementById('oee-bar-'+id);bar.style.width=m.oee+'%';bar.style.background=m.oee>=75?'#178b80':'#d39b30';
+    document.getElementById('oee-factors-'+id).textContent=`D ${m.a.toFixed(0)}% · R ${m.p.toFixed(0)}% · C ${m.q.toFixed(0)}%`;
+  });
+  document.getElementById('amr-status').textContent=`AMR: ${{idle:'Disponible',arriving:'En camino',loading:'Cargando',departing:'Retirando'}[logistics.phase]} · Despachadas: ${logistics.delivered}`;
+  bobina.scale.x=bobina.scale.z=0.45+0.55*game.film/24;
 }
 
 // ══════════════════════════════════════════════════════
 //  GAME LOOP
 // ══════════════════════════════════════════════════════
 let lastTime=0;
-const CYCLE_FLOWPACK=3.0, CYCLE_CINTA=2.0;
+const CYCLE_FLOWPACK=6.0, CYCLE_CINTA=10.0;
 
 function animate(ts){
   requestAnimationFrame(animate);
   const dt=Math.min((ts-lastTime)/1000,0.1); lastTime=ts;
   const s=plantState;
 
-  if(s.running && !s.emergency){
-    // Nivel tolva
-    s.nivel=Math.max(0,s.nivel-dt*0.006*s.speed);
-    if(s.nivel<0.15 && !s.alarm){
-      s.alarm=true; logEvent('⚠ Alarma: nivel bajo en tolva','alarm'); playAlarm();
-      if(s.mode==='auto') s.running=false;
+  updateGame(dt);
+  if(s.running && !s.emergency && !game.finished){
+    if(flowReady()){
+      s._flowpackTimer+=dt*s.speed;
+      if(s._flowpackTimer>=CYCLE_FLOWPACK && spawnBag())s._flowpackTimer-=CYCLE_FLOWPACK;
+      updatePowder(dt);
     }
-
-    // Flowpack
-    s._flowpackTimer+=dt*s.speed;
-    if(s._flowpackTimer>=CYCLE_FLOWPACK){ s._flowpackTimer=0; spawnBag(); }
-
     moveBags(dt);
-    updatePowder(dt);
-    animateRobot(dt);
-
-    updateMachineVisuals(dt * s.speed);
-    updateLogistics(dt*s.speed);
-    demoTime+=dt*s.speed;
+    if(gateLift<0.02)animateRobot(dt);
+    updateMachineVisuals(dt);
+    updateLogistics(dt);
+    updateSafetyCell(dt);
 
     // Compuerta
     const tRot=s.running?0.75:0;
@@ -1075,7 +1211,7 @@ function animate(ts){
     }
   }
 
-  updateDemoOEE();
+  updateGameUI();
   updateSignals();
   controls.update();
   updatePanel();
@@ -1085,27 +1221,34 @@ function animate(ts){
 // ── Bolsitas ──
 function spawnBag(){
   const bag=bagsOnBelt.find(b=>!b.userData.active && b !== robotAnim.carriedBag);
-  if(!bag || bagsOnBelt.some(b => b.userData.active && b.userData.progress < 0.12)) return;
+  if(!flowReady() || !bag) return false;
+  plantState.nivel=Math.max(0,plantState.nivel-0.025); game.film--;
+  game.attempts++;
+  const good=!(plantState.speed>1.45 && game.attempts%5===0);
+  recordOutput('tolva'); recordOutput('flowpack',good);
+  if(!good){game.rejects++; logEvent('Sellado defectuoso: bajá la velocidad de la flowpaquera','alarm');return true;}
   bag.userData.active=true; bag.userData.progress=0; bag.userData.readyForPick=false;
   bag.visible=true;
   bag.position.set(BELT_START_X,BELT_Y,0);
   plantState.bolsitas++;
   playBeep(1400,0.04);
   logEvent(`Bolsita #${plantState.bolsitas} producida`,'ok');
+  return true;
 }
 function moveBags(dt){
   let limit = 1;
   const queued = bagsOnBelt.filter(b => b.userData.active)
     .sort((a,b) => b.userData.progress - a.userData.progress);
   queued.forEach(bag=>{
-    bag.userData.progress = Math.min(limit, bag.userData.progress + dt*plantState.speed/CYCLE_CINTA);
+    bag.userData.progress = Math.min(limit, bag.userData.progress + dt*plantState.beltSpeed/CYCLE_CINTA);
     limit = Math.max(0, bag.userData.progress - 0.85/(BELT_END_X-BELT_START_X));
     const p=bag.userData.progress;
     bag.position.set(BELT_START_X+p*(BELT_END_X-BELT_START_X),BELT_Y,0);
     if(p>=1.0){
+      if(!bag.userData.readyForPick) recordOutput('cinta');
       bag.position.set(BELT_END_X,BELT_Y,0);
       bag.userData.readyForPick=true;
-      if(!robotAnim.hasBag && robotAnim.phase===0 && !logistics.boxReady){
+      if(!robotAnim.hasBag && robotAnim.phase===0 && !logistics.boxReady && game.palletReady && gateLift<0.02){
         robotAnim.phase=1; robotAnim.t=0; robotAnim.carriedBag=bag;
       }
     }
@@ -1145,7 +1288,7 @@ function animateRobot(dt){
     if(ra.phase===7) robotTarget.set(robotTool.x,2.7,robotTool.z);
     if(ra.phase===8) robotTarget.set(BELT_END_X,2.7,0);
   }
-  ra.t+=dt*plantState.speed;
+  ra.t+=dt*plantState.robotSpeed;
   const pt=Math.min(ra.t/ra.duration[ra.phase],1);
   const eased=smoothMotion(pt);
   robotTool.lerpVectors(robotFrom,robotTarget,eased);
@@ -1165,6 +1308,7 @@ function animateRobot(dt){
     if(ra.phase===6){
       ra.hasBag=false;
       if(ra.carriedBag){ra.carriedBag.visible=false;ra.carriedBag.userData.readyForPick=false;ra.carriedBag=null;}
+      recordOutput('robot');
       BAGS_IN_BOX[plantState._bolsitasEnCaja].visible=true;
       plantState._bolsitasEnCaja++;
       if(plantState._bolsitasEnCaja>=BOLSITAS_POR_CAJA) completarCaja();
@@ -1179,23 +1323,17 @@ function completarCaja(){
   plantState._bolsitasEnCaja=0;
   logistics.boxReady=true;
   logistics.closeT=0;
-  plantState.cajas++;
+  plantState.cajas++; recordOutput('cajas');
   playBeep(800,0.15); playBeep(1000,0.1);
   logEvent(`📦 Caja #${plantState.cajas} completada (${BOLSITAS_POR_CAJA} bolsitas)`,'ok');
   logEvent('AMR solicitado: caja lista para retiro','info');
-  if(plantState.mode==='auto' && plantState.nivel<0.3){
-    plantState.nivel=1.0; plantState.alarm=false;
-    logEvent('Tolva recargada (modo auto)','ok');
-    plantState.running=true;
-    if(document.getElementById('btn-start')) document.getElementById('btn-start').textContent='⏸ DETENER LÍNEA';
-    document.getElementById('btn-start')?.classList.add('running');
-  }
+
 }
 
 // ── Resize ──
 function frameLine(){
-  const direction=new THREE.Vector3(0.35,0.37,1).normalize();
-  const distance=Math.max(23,20/Math.max(camera.aspect,0.45));
+  const direction=new THREE.Vector3(0.28,0.40,1).normalize();
+  const distance=Math.max(25,23/Math.max(camera.aspect,0.45));
   controls.target.set(1,3.7,0);
   camera.position.copy(controls.target).addScaledVector(direction,distance);
   controls.update();
